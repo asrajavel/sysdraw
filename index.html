@@ -21,7 +21,7 @@
   header button:active, dialog button:active { box-shadow: none; transform: translateY(1px); }
   /* Toolbar icons are Lucide icons (lucide.dev, ISC licence), pasted inline so the page needs no download. */
   header button { display: inline-flex; align-items: center; gap: 6px; }
-  header svg, #menu .ico > svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  header svg, #zoom svg, #menu .ico > svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   dialog button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
   dialog button.primary:hover { background: #1d4ed8; }
 
@@ -36,9 +36,15 @@
   dialog .err { color: #c00; margin: 8px 0 0; }
   dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
   .panning, .panning * { cursor: grabbing !important; }
-  /* The board fills the window below the header. #world holds the boxes and arrows and is shifted by the pan offset. */
+  /* The board fills the window below the header. #world holds the boxes and arrows; it is shifted by the pan offset
+     and scaled by the zoom from its top-left corner. */
   #board { position: fixed; inset: 48px 0 0 0; overflow: hidden; background: radial-gradient(#d4d4d4 1px, transparent 1px) 0 0 / 20px 20px; }
-  #world { position: absolute; left: 0; top: 0; }
+  #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  /* Zoom control in the bottom-left corner: minus, the zoom percentage (a click resets it to 100%), and plus. */
+  #zoom { position: fixed; left: 12px; bottom: 12px; z-index: 10; display: flex; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; overflow: hidden; }
+  #zoom button { display: grid; place-items: center; min-width: 30px; height: 28px; padding: 0 6px; border: 0; background: none; font: 13px system-ui, sans-serif; cursor: pointer; }
+  #zoom button:hover { background: #eef4ff; }
+  #zoom-reset { min-width: 52px !important; font-variant-numeric: tabular-nums; }
   #hint { position: absolute; inset: 0; display: grid; place-items: center; color: #999; font-size: 15px; pointer-events: none; }
   #hint[hidden] { display: none; }
   #wires { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
@@ -153,6 +159,11 @@
     <path id="temp"/>
   </svg>
 </div></div>
+<div id="zoom">
+  <button id="zoom-out" title="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+  <button id="zoom-reset" title="Reset to 100%">100%</button>
+  <button id="zoom-in" title="Zoom in"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+</div>
 <div id="menu" hidden></div>
 <dialog id="dlg"></dialog>
 
@@ -208,8 +219,9 @@ const $ = id => document.getElementById(id);
 const board = $('board'), world = $('world'), wires = $('wires'), temp = $('temp'), menu = $('menu'), dlg = $('dlg');
 
 // `mode` is 'lld' or 'hld', and `M` is its entry in MODES. `state` is the mode's whole diagram. `last` is its JSON
-// as of the latest commit; `undo` holds earlier commits. `view` is the pan offset: how far the diagram origin sits
-// from the board's top-left corner, in pixels. setMode() at the end of the script fills these in.
+// as of the latest commit; `undo` holds earlier commits. `view` holds the pan offset and zoom: the diagram origin
+// sits `x`, `y` screen pixels from the board's top-left corner, and `z` is the zoom (1 is 100%). setMode() at the end
+// of the script fills these in.
 let mode, M, state, last, undo, view, drag = null;
 
 function blank() { return { classes: [], links: [] }; }
@@ -252,15 +264,28 @@ function commit() {
 const byId = id => state.classes.find(c => c.id === id);
 const boxOf = id => board.querySelector(`.box[data-id="${id}"]`);
 const rowSel = (id, sec, i) => `.box[data-id="${id}"] input[data-sec="${sec}"][data-i="${i}"]`;
-// Diagram coordinates of a mouse event; #world's corner is the diagram origin wherever the pan has moved it.
-const pt = e => { const r = world.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+// Diagram coordinates of a mouse event. #world's corner is the diagram origin wherever the pan has moved it, and the
+// zoom scales every distance from it.
+const pt = e => { const r = world.getBoundingClientRect(); return { x: (e.clientX - r.left) / view.z, y: (e.clientY - r.top) / view.z }; };
 
+// Moves the diagram by (dx, dy) screen pixels, redraws it and the dot grid at the current zoom, and saves the view.
 function pan(dx, dy) {
   view.x += dx;
   view.y += dy;
-  world.style.transform = `translate(${view.x}px, ${view.y}px)`;
+  world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
   board.style.backgroundPosition = `${view.x}px ${view.y}px`;
+  board.style.backgroundSize = `${20 * view.z}px ${20 * view.z}px`;
+  $('zoom-reset').textContent = Math.round(view.z * 100) + '%';
   try { localStorage.setItem(M.key + '-view', JSON.stringify(view)); } catch {}
+}
+
+// Sets the zoom to `z`, kept between 20% and 300%. The diagram point at board position (cx, cy) stays where it is,
+// so a wheel zoom keeps the spot under the cursor still; the buttons zoom about the board's centre.
+function zoom(z, cx = board.clientWidth / 2, cy = board.clientHeight / 2) {
+  z = Math.min(3, Math.max(0.2, z));
+  const k = z / view.z;
+  view.z = z;
+  pan((cx - view.x) * (1 - k), (cy - view.y) * (1 - k));
 }
 
 // Switch to mode `m` and show the diagram and pan offset that mode saved last. Undo history does not carry over.
@@ -273,8 +298,8 @@ function setMode(m) {
   last = JSON.stringify(state);
   undo = [];
   drag = null;
-  view = { x: 0, y: 0 };
-  try { view = JSON.parse(localStorage.getItem(M.key + '-view')) || view; } catch {}
+  view = { x: 0, y: 0, z: 1 };
+  try { view = { ...view, ...JSON.parse(localStorage.getItem(M.key + '-view')) }; } catch {}
   document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   $('add').querySelector('span').textContent = M.kinds[M.add][1];
   $('hint').textContent = M.hint;
@@ -494,7 +519,8 @@ board.addEventListener('pointerdown', e => {
   }
   const c = byId(box.dataset.id), p = pt(e), r = box.getBoundingClientRect();
   // The bottom-right corner of a Box is the browser's resize grip, so a drag there resizes instead of moving.
-  const onGrip = box.dataset.kind === 'group' && e.clientX > r.right - 16 && e.clientY > r.bottom - 16;
+  const g = 16 * view.z; // the grip's size on screen
+  const onGrip = box.dataset.kind === 'group' && e.clientX > r.right - g && e.clientY > r.bottom - g;
   if (e.button === 2) drag = { from: c, x: e.clientX, y: e.clientY, moved: false };
   else if (e.button === 0 && e.target.tagName !== 'INPUT' && !onGrip) {
     e.preventDefault();
@@ -503,9 +529,16 @@ board.addEventListener('pointerdown', e => {
 });
 
 // Dragging with the middle button or turning the wheel pans the canvas, as in Excalidraw. Shift+wheel pans sideways.
-board.addEventListener('wheel', e => {
-  if (e.ctrlKey) return; // Ctrl+wheel stays the browser's zoom
+// Ctrl+wheel, Cmd+wheel and a trackpad pinch zoom the canvas about the cursor instead of zooming the page. The
+// listener is on the window so the header and zoom control cannot let a page zoom through; an open dialog keeps its
+// own scrolling.
+window.addEventListener('wheel', e => {
+  if (dlg.open) return;
   e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    const r = board.getBoundingClientRect();
+    return zoom(view.z * Math.exp(-e.deltaY / 1000), e.clientX - r.left, e.clientY - r.top);
+  }
   const sideways = e.shiftKey && !e.deltaX;
   pan(-(sideways ? e.deltaY : e.deltaX), sideways ? 0 : -e.deltaY);
 }, { passive: false });
@@ -659,8 +692,12 @@ document.addEventListener('keydown', e => {
 // Place the new box near the top-left of the visible part of the canvas, staggered so boxes don't stack exactly.
 $('add').onclick = () => {
   const step = (state.classes.length % 5) * 30;
-  addClass({ x: 40 - view.x + step, y: 40 - view.y + step }, M.add);
+  addClass({ x: (40 - view.x) / view.z + step, y: (40 - view.y) / view.z + step }, M.add);
 };
+// Plus and minus step 10 percentage points from the nearest multiple of 10%, so a wheel zoom such as 93% steps to 100%.
+$('zoom-in').onclick = () => zoom(Math.round(view.z * 10) / 10 + 0.1);
+$('zoom-out').onclick = () => zoom(Math.round(view.z * 10) / 10 - 0.1);
+$('zoom-reset').onclick = () => zoom(1);
 $('mode').onclick = e => {
   const m = e.target.dataset.mode;
   if (m && m !== mode) setMode(m);
