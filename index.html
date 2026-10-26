@@ -2,19 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>UML Class Diagram</title>
+<title>Diagram Tool</title>
 <style>
   body { margin: 0; overflow: hidden; font-family: system-ui, sans-serif; background: #fafafa; }
   /* Fixed, not sticky, so panning sideways never moves it; the board starts below its 48px height. */
   header { position: fixed; top: 0; left: 0; right: 0; height: 48px; box-sizing: border-box; z-index: 10; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #ddd; }
-  header b { margin-right: 6px; font-size: 15px; }
+  /* The LLD / HLD switch: two joined buttons, the current mode filled in. */
+  #mode { display: flex; margin-right: 6px; border: 1.5px solid #333; border-radius: 4px; overflow: hidden; }
+  #mode button { border: 0; border-radius: 0; box-shadow: none; transform: none; padding: 4px 10px; font-weight: 600; }
+  #mode button.on { background: #333; color: #fff; }
   /* Toolbar buttons share the class boxes' border, corners and shadow. */
   header button, dialog button { font: 14px system-ui, sans-serif; padding: 4px 12px; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; cursor: pointer; white-space: nowrap; }
   header button:hover, dialog button:hover { background: #eef4ff; }
   header button:active, dialog button:active { box-shadow: none; transform: translateY(1px); }
   /* Toolbar icons are Lucide icons (lucide.dev, ISC licence), pasted inline so the page needs no download. */
   header button { display: inline-flex; align-items: center; gap: 6px; }
-  header svg, #menu svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  header svg, #menu .ico > svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   dialog button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
   dialog button.primary:hover { background: #1d4ed8; }
 
@@ -40,6 +43,8 @@
   .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: context-menu; }
   g:hover .line { stroke: #2563eb; }
   .mult { font: 14px Consolas, monospace; }
+  /* The type name sits on the middle of its arrow; the halo in the board's colour breaks the line behind it. */
+  .type { font: 12px system-ui, sans-serif; fill: #666; stroke: #fafafa; stroke-width: 4px; paint-order: stroke; }
   #temp { stroke: #2563eb; stroke-width: 1.5; stroke-dasharray: 4 3; }
 
   .box { position: absolute; min-width: 140px; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; cursor: move; }
@@ -50,6 +55,16 @@
   .badge.interface { background: #dcfce7; color: #166534; }
   .badge.enum { background: #fef3c7; color: #92400e; }
   .badge.record { background: #ede9fe; color: #5b21b6; }
+  /* HLD components show a Lucide icon in the badge instead of a letter. */
+  .badge svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .badge.client { background: #e0f2fe; color: #0369a1; }
+  .badge.service { background: #dbeafe; color: #1e40af; }
+  .badge.database { background: #dcfce7; color: #166534; }
+  .badge.cache { background: #fee2e2; color: #b91c1c; }
+  .badge.lb { background: #ede9fe; color: #5b21b6; }
+  .badge.queue { background: #fef3c7; color: #92400e; }
+  .badge.storage { background: #ccfbf1; color: #115e59; }
+  .badge.cdn { background: #fce7f3; color: #9d174d; }
   .sec { padding: 3px 0; border-top: 1.5px solid #333; }
   .box input { display: block; box-sizing: border-box; min-width: 100%; field-sizing: content; border: 0; outline: 0; background: transparent; padding: 2px 10px; font: 14px Consolas, monospace; cursor: text; }
   /* Each field or method row: a small f or m tag, then the text box. */
@@ -65,6 +80,18 @@
   .tag.methods { background: #f6dbe8; color: #a3376b; }
   /* An empty row hides its tag until it is focused, so an empty section stays blank. */
   .item:has(input:placeholder-shown:not(:focus)) .tag { visibility: hidden; }
+  /* HLD components look like a book's system diagram: a large icon tile with the name and any notes in small text
+     below it, on a white card. */
+  body[data-mode="hld"] .box { min-width: 96px; box-sizing: border-box; padding: 10px 12px 8px; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 1px 4px #0001; }
+  body[data-mode="hld"] .head { flex-direction: column; gap: 4px; padding: 0; }
+  body[data-mode="hld"] .box .badge { width: 52px; height: 52px; border-radius: 12px; }
+  body[data-mode="hld"] .box .badge svg { width: 28px; height: 28px; stroke-width: 1.8; }
+  body[data-mode="hld"] .box .name { flex: none; padding: 0 2px; font: 600 13px system-ui, sans-serif; }
+  body[data-mode="hld"] .sec { border: 0; padding: 0; }
+  body[data-mode="hld"] .item { padding: 0; }
+  body[data-mode="hld"] .item input { padding: 0 2px; text-align: center; font: 12px system-ui, sans-serif; color: #555; }
+  /* A component without notes shows no notes rows. The empty row stays focusable, so Enter in the name opens it. */
+  body[data-mode="hld"] .sec:not(:has(input:focus, input:not(:placeholder-shown))) { height: 0; overflow: hidden; }
   .box input:focus { background: #eef4ff; }
   .box input::placeholder { color: transparent; }
   .box input:focus::placeholder { color: #aaa; }
@@ -81,18 +108,19 @@
   #menu .ico { flex: none; width: 18px; display: grid; place-items: center; }
   #menu .badge { width: 18px; height: 18px; font-size: 11px; }
   #menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid #eee; }
+  #menu .title { padding: 4px 8px 2px; font-size: 12px; color: #888; }
 </style>
 </head>
 <body>
 <header>
-  <b>UML</b>
-  <button id="add"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Class</button>
+  <div id="mode"><button data-mode="lld">LLD</button><button data-mode="hld">HLD</button></div>
+  <button id="add"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg><span></span></button>
   <button id="export"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Export</button>
   <button id="import"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>Import</button>
   <button id="clear"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Clear</button>
   <input id="file" type="file" accept=".json" hidden>
 </header>
-<div id="board"><div id="hint">Right-click to add a class</div><div id="world">
+<div id="board"><div id="hint"></div><div id="world">
   <svg id="wires">
     <defs>
       <marker id="tri" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">
@@ -109,38 +137,85 @@
 <dialog id="dlg"></dialog>
 
 <script>
-const KINDS = { class: ['C', 'Class'], abstract: ['A', 'Abstract Class'], interface: ['I', 'Interface'], enum: ['E', 'Enum'], record: ['R', 'Record'] };
-const TYPES = ['extends', 'implements', 'has-a'];
+// Lucide icons (lucide.dev, ISC licence) for the HLD components.
+const icon = paths => `<svg viewBox="0 0 24 24">${paths}</svg>`;
+// Each mode has its own box kinds ([badge, name]), arrow types, row sections ([key, tag letter, placeholder]) and
+// storage key. `add` is the kind the toolbar button inserts; `link(a, b)` picks the arrow type for a right-drag from
+// a box of kind `a` to one of kind `b`, and the arrow's right-click menu can change it.
+const MODES = {
+  lld: {
+    key: 'uml-tool', add: 'class', hint: 'Right-click to add a class',
+    kinds: { class: ['C', 'Class'], abstract: ['A', 'Abstract Class'], interface: ['I', 'Interface'], enum: ['E', 'Enum'], record: ['R', 'Record'] },
+    types: ['extends', 'implements', 'has-a'],
+    sections: [['fields', 'f', 'field'], ['methods', 'm', 'method()']],
+    // The "New" prefix keeps an unrenamed box from clashing with Java's own Class, Enum and Record.
+    newName: name => 'New' + name.replace(/ /g, ''),
+    link(a, b) {
+      if (b === 'interface') return a === 'interface' ? 'extends' : 'implements';
+      const isClass = k => k === 'class' || k === 'abstract';
+      return isClass(a) && isClass(b) ? 'extends' : 'has-a';
+    },
+  },
+  hld: {
+    key: 'hld-tool', add: 'service', hint: 'Right-click to add a component',
+    kinds: {
+      client: [icon('<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>'), 'Client'],
+      service: [icon('<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/>'), 'Service'],
+      database: [icon('<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>'), 'Database'],
+      cache: [icon('<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>'), 'Cache'],
+      lb: [icon('<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>'), 'Load Balancer'],
+      queue: [icon('<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>'), 'Queue'],
+      storage: [icon('<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>'), 'Object Storage'],
+      cdn: [icon('<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>'), 'CDN'],
+    },
+    types: ['sync'],
+    sections: [['notes', '', 'note']],
+    newName: name => name,
+    link: () => 'sync',
+  },
+};
 // Multiplicity choices for a has-a arrow: [menu label, label at the arrow's tail, label at its head].
 // They read along the arrow: on Order → Item, One-to-Many means one Order has many Items.
 const MULTS = [['None'], ['One-to-One', '1', '1'], ['One-to-Many', '1', '*'], ['Many-to-One', '*', '1'], ['Many-to-Many', '*', '*']];
-const KEY = 'uml-tool';
 const $ = id => document.getElementById(id);
 const board = $('board'), world = $('world'), wires = $('wires'), temp = $('temp'), menu = $('menu'), dlg = $('dlg');
 
-// `state` is the whole diagram. `last` is its JSON as of the latest commit; `undo` holds earlier commits.
-let state = load(), last = JSON.stringify(state), undo = [], drag = null;
+// `mode` is 'lld' or 'hld', and `M` is its entry in MODES. `state` is the mode's whole diagram. `last` is its JSON
+// as of the latest commit; `undo` holds earlier commits. `view` is the pan offset: how far the diagram origin sits
+// from the board's top-left corner, in pixels. setMode() at the end of the script fills these in.
+let mode, M, state, last, undo, view, drag = null;
 
 function blank() { return { classes: [], links: [] }; }
-function load() { try { return parseDiagram(localStorage.getItem(KEY)) || blank(); } catch { return blank(); } }
+// `memory` keeps each mode's latest diagram JSON too, so switching modes loses nothing when storage is blocked.
+const memory = {};
+function load() {
+  let text = memory[mode];
+  try { text = localStorage.getItem(M.key) ?? text; } catch {}
+  return parseDiagram(text) || blank();
+}
 
-// Returns the diagram in the JSON `text`, or null when it is not one this page can draw. Imports may be
-// hand-written or AI-written, so every class and arrow is checked. Empty sections get one blank row to type into.
-function parseDiagram(text) {
+// Returns the diagram in the JSON `text` for mode `m`, or null when it is not one this page can draw. Imports may be
+// hand-written or AI-written, so every box and arrow is checked. Empty sections get one blank row to type into.
+function parseDiagram(text, m = mode) {
   try {
-    const s = JSON.parse(text), ids = new Set();
+    const s = JSON.parse(text), ids = new Set(), { kinds, types, sections } = MODES[m];
     const ok = Array.isArray(s.classes) && Array.isArray(s.links) &&
       s.classes.every(c => c && typeof c.id === 'string' && /^[\w-]+$/.test(c.id) && !ids.has(c.id) && ids.add(c.id) &&
-        Object.hasOwn(KINDS, c.kind) && typeof c.name === 'string' && Number.isFinite(c.x) && Number.isFinite(c.y) &&
-        [c.fields, c.methods].every(rows => Array.isArray(rows) && rows.every(t => typeof t === 'string'))) &&
-      s.links.every(l => l && ids.has(l.from) && ids.has(l.to) && TYPES.includes(l.type));
+        Object.hasOwn(kinds, c.kind) && typeof c.name === 'string' && Number.isFinite(c.x) && Number.isFinite(c.y) &&
+        sections.every(([sec]) => Array.isArray(c[sec]) && c[sec].every(t => typeof t === 'string'))) &&
+      s.links.every(l => l && ids.has(l.from) && ids.has(l.to) && l.from !== l.to && types.includes(l.type) &&
+        [l.fromLabel, l.toLabel].every(t => t === undefined || typeof t === 'string'));
     if (!ok) return null;
-    for (const c of s.classes) for (const rows of [c.fields, c.methods]) if (!rows.length) rows.push('');
+    for (const c of s.classes) for (const [sec] of sections) if (!c[sec].length) c[sec].push('');
+    delete s.mode;
     return s;
   } catch { return null; }
 }
 // Storage can be blocked (private windows, some previews); the diagram then lives only until the tab closes.
-function persist() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
+function persist() {
+  memory[mode] = JSON.stringify(state);
+  try { localStorage.setItem(M.key, memory[mode]); } catch {}
+}
 function commit() {
   const s = JSON.stringify(state);
   if (s !== last) { undo.push(last); last = s; }
@@ -152,15 +227,32 @@ const rowSel = (id, sec, i) => `.box[data-id="${id}"] input[data-sec="${sec}"][d
 // Diagram coordinates of a mouse event; #world's corner is the diagram origin wherever the pan has moved it.
 const pt = e => { const r = world.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 
-// `view` is the pan offset: how far the diagram origin sits from the board's top-left corner, in pixels.
-let view = { x: 0, y: 0 };
-try { view = JSON.parse(localStorage.getItem(KEY + '-view')) || view; } catch {}
 function pan(dx, dy) {
   view.x += dx;
   view.y += dy;
   world.style.transform = `translate(${view.x}px, ${view.y}px)`;
   board.style.backgroundPosition = `${view.x}px ${view.y}px`;
-  try { localStorage.setItem(KEY + '-view', JSON.stringify(view)); } catch {}
+  try { localStorage.setItem(M.key + '-view', JSON.stringify(view)); } catch {}
+}
+
+// Switch to mode `m` and show the diagram and pan offset that mode saved last. Undo history does not carry over.
+function setMode(m) {
+  mode = m;
+  M = MODES[m];
+  document.body.dataset.mode = m;
+  try { localStorage.setItem('diagram-mode', m); } catch {}
+  state = load();
+  last = JSON.stringify(state);
+  undo = [];
+  drag = null;
+  view = { x: 0, y: 0 };
+  try { view = JSON.parse(localStorage.getItem(M.key + '-view')) || view; } catch {}
+  document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  $('add').querySelector('span').textContent = M.kinds[M.add][1];
+  $('hint').textContent = M.hint;
+  menu.hidden = true;
+  pan(0, 0);
+  render();
 }
 
 function svg(tag, attrs) {
@@ -195,17 +287,17 @@ function boxEl(c) {
   el.dataset.id = c.id;
   el.style.left = c.x + 'px';
   el.style.top = c.y + 'px';
-  el.innerHTML = `<div class="head"><span class="badge ${c.kind}">${KINDS[c.kind][0]}</span><input class="name"></div>
-    <div class="sec"></div><div class="sec"></div>`;
+  el.innerHTML = `<div class="head"><span class="badge ${c.kind}">${M.kinds[c.kind][0]}</span><input class="name"></div>` +
+    M.sections.map(() => '<div class="sec"></div>').join('');
   el.querySelector('.name').value = c.name;
   const secs = el.querySelectorAll('.sec');
-  [['fields', 'f', c.kind === 'enum' ? 'CONSTANT' : 'field'], ['methods', 'm', 'method()']].forEach(([sec, tag, hint], s) =>
+  M.sections.forEach(([sec, tag, hint], s) =>
     c[sec].forEach((text, i) => {
       const item = document.createElement('div');
       item.className = 'item';
-      item.innerHTML = `<span class="tag ${sec}">${tag}</span>`;
+      if (tag) item.innerHTML = `<span class="tag ${sec}">${tag}</span>`;
       const inp = document.createElement('input');
-      Object.assign(inp, { value: text, placeholder: hint });
+      Object.assign(inp, { value: text, placeholder: sec === 'fields' && c.kind === 'enum' ? 'CONSTANT' : hint });
       Object.assign(inp.dataset, { sec, i });
       item.append(inp);
       secs[s].append(item);
@@ -249,8 +341,15 @@ function drawWires() {
     const [x1, y1] = edge(a, b.cx, b.cy), [x2, y2] = edge(b, a.cx, a.cy);
     const d = `M${x1},${y1}L${x2},${y2}`;
     const g = svg('g', { 'data-i': i });
-    g.append(svg('path', { d, class: `line ${l.type}`, 'marker-end': `url(#${l.type === 'has-a' ? 'open' : 'tri'})` }),
+    const inherits = l.type === 'extends' || l.type === 'implements';
+    g.append(svg('path', { d, class: `line ${l.type}`, 'marker-end': `url(#${inherits ? 'tri' : 'open'})` }),
              svg('path', { d, class: 'hit' }));
+    // A mode with one arrow type (HLD) needs no name on its arrows.
+    if (M.types.length > 1) {
+      const t = svg('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 + 4, class: 'type', 'text-anchor': 'middle' });
+      t.textContent = l.type;
+      g.append(t);
+    }
     if (l.type === 'has-a') {
       if (l.fromLabel) g.append(label(l.fromLabel, x1, y1, x2, y2));
       if (l.toLabel) g.append(label(l.toLabel, x2, y2, x1, y1));
@@ -259,18 +358,12 @@ function drawWires() {
   });
 }
 
-// Arrow type when dragging from a box of kind `a` to a box of kind `b`; right-click overrides it.
-function defaultType(a, b) {
-  if (b === 'interface') return a === 'interface' ? 'extends' : 'implements';
-  const isClass = k => k === 'class' || k === 'abstract';
-  return isClass(a) && isClass(b) ? 'extends' : 'has-a';
-}
-
-// Adds a box of `kind` at diagram point (x, y), named after its kind ("NewAbstractClass"), with the name selected.
-// The "New" prefix keeps an unrenamed box from clashing with Java's own Class, Enum and Record.
-function addClass({ x, y }, kind = 'class') {
-  const name = 'New' + KINDS[kind][1].replace(/ /g, '');
-  const c = { id: Math.random().toString(36).slice(2, 9), kind, name, x, y, fields: [''], methods: [''] };
+// Adds a box of `kind` at diagram point (x, y), named after its kind ("NewAbstractClass", "Cache"), with the name
+// selected and one empty row in each section.
+function addClass({ x, y }, kind) {
+  const name = M.newName(M.kinds[kind][1]);
+  const c = { id: Math.random().toString(36).slice(2, 9), kind, name, x, y };
+  for (const [sec] of M.sections) c[sec] = [''];
   state.classes.push(c);
   commit();
   render(`.box[data-id="${c.id}"] .name`, true);
@@ -409,7 +502,7 @@ function endDrag(e) {
     temp.setAttribute('d', '');
     const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.box');
     const a = drag.from, b = target && byId(target.dataset.id);
-    if (b && b !== a) state.links.push({ from: a.id, to: b.id, type: defaultType(a.kind, b.kind) });
+    if (b && b !== a) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind) });
   }
   drag = null;
   document.body.classList.remove('panning');
@@ -425,14 +518,20 @@ board.addEventListener('dblclick', e => {
 });
 
 // ---- Right-click menus ----
-const badge = k => `<span class="badge ${k}">${KINDS[k][0]}</span>`;
+const badge = k => `<span class="badge ${k}">${M.kinds[k][0]}</span>`;
 const TRASH = '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
 
-// Each item is [label, onClick, isSelected, iconHtml]; null draws a divider.
+// Each item is [label, onClick, isSelected, iconHtml]; null draws a divider and a string draws a small heading.
 function openMenu(e, items) {
   e.preventDefault();
   menu.replaceChildren(...items.map(item => {
     if (!item) return document.createElement('hr');
+    if (typeof item === 'string') {
+      const t = document.createElement('div');
+      t.className = 'title';
+      t.textContent = item;
+      return t;
+    }
     const b = document.createElement('button');
     b.innerHTML = `<span class="ico">${item[3] || ''}</span>`;
     b.append(item[0]);
@@ -452,7 +551,7 @@ board.addEventListener('contextmenu', e => {
   if (box) {
     const c = byId(box.dataset.id);
     openMenu(e, [
-      ...Object.entries(KINDS).map(([k, [, name]]) => [name, () => { c.kind = k; }, c.kind === k, badge(k)]),
+      ...Object.entries(M.kinds).map(([k, [, name]]) => [name, () => { c.kind = k; }, c.kind === k, badge(k)]),
       null,
       ['Delete', () => {
         state.classes = state.classes.filter(x => x !== c);
@@ -462,15 +561,14 @@ board.addEventListener('contextmenu', e => {
   } else if (g) {
     const i = +g.dataset.i, l = state.links[i];
     openMenu(e, [
-      ...TYPES.map(t => [t[0].toUpperCase() + t.slice(1), () => { l.type = t; }, l.type === t]),
-      ...(l.type === 'has-a' ? [null, ...MULTS.map(([name, from, to]) =>
-        [name, () => { l.fromLabel = from; l.toLabel = to; }, l.fromLabel === from && l.toLabel === to])] : []),
-      null,
+      ...(M.types.length > 1 ? [...M.types.map(t => [t[0].toUpperCase() + t.slice(1), () => { l.type = t; }, l.type === t]), null] : []),
+      ...(l.type === 'has-a' ? [...MULTS.map(([name, from, to]) =>
+        [name, () => { l.fromLabel = from; l.toLabel = to; }, l.fromLabel === from && l.toLabel === to]), null] : []),
       ['Delete', () => { state.links.splice(i, 1); }, false, TRASH],
     ]);
   } else {
     const p = pt(e);
-    openMenu(e, Object.entries(KINDS).map(([k, [, name]]) => ['New ' + name, () => addClass(p, k), false, badge(k)]));
+    openMenu(e, ['Add', ...Object.entries(M.kinds).map(([k, [, name]]) => [name, () => addClass(p, k), false, badge(k)])]);
   }
 });
 
@@ -501,7 +599,11 @@ document.addEventListener('keydown', e => {
 // Place the new box near the top-left of the visible part of the canvas, staggered so boxes don't stack exactly.
 $('add').onclick = () => {
   const step = (state.classes.length % 5) * 30;
-  addClass({ x: 40 - view.x + step, y: 40 - view.y + step });
+  addClass({ x: 40 - view.x + step, y: 40 - view.y + step }, M.add);
+};
+$('mode').onclick = e => {
+  const m = e.target.dataset.mode;
+  if (m && m !== mode) setMode(m);
 };
 
 // ---- Dialogs: the page never uses the browser's alert, confirm or prompt ----
@@ -538,7 +640,7 @@ $('export').onclick = () => {
       a.click();
     }, true],
   ]);
-  $('json').value = JSON.stringify(state, null, 2);
+  $('json').value = JSON.stringify({ mode, ...state }, null, 2);
 };
 
 // Import replaces the diagram with pasted JSON or a chosen file. Ctrl+Z restores the previous diagram.
@@ -557,25 +659,31 @@ $('file').onchange = async () => {
   if (loadDiagram($('json').value) !== false) dlg.close();
 };
 
-// Replace the diagram with the JSON in `text`. Returns false, and shows why in the dialog, when it is not a diagram.
+// Replace the diagram with the JSON in `text`, switching to the mode it was exported from. Returns false, and shows why in the dialog, when it is not a diagram.
 function loadDiagram(text) {
-  const s = parseDiagram(text);
+  let m;
+  try { m = JSON.parse(text).mode; } catch {}
+  // Without a mode (older exports, hand-written JSON), use whichever mode the diagram fits.
+  m ??= ['lld', 'hld'].find(k => parseDiagram(text, k));
+  const s = Object.hasOwn(MODES, m) && parseDiagram(text, m);
   if (!s) {
     $('err').textContent = 'This is not a diagram saved by this tool.';
     return false;
   }
+  if (m !== mode) setMode(m);
   state = s;
   commit();
   render();
 }
 
-$('clear').onclick = () => ask('Clear the diagram?', '<p>This deletes every class and arrow.</p>', [
+$('clear').onclick = () => ask('Clear the diagram?', '<p>This deletes every box and arrow.</p>', [
   ['Cancel'],
   ['Clear', () => { state = blank(); commit(); render(); }, true],
 ]);
 
-pan(0, 0);
-render();
+let saved;
+try { saved = localStorage.getItem('diagram-mode'); } catch {}
+setMode(Object.hasOwn(MODES, saved) ? saved : 'lld');
 </script>
 </body>
 </html>
