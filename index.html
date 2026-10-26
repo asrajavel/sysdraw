@@ -96,18 +96,19 @@
   body[data-mode="hld"] .box[data-kind="group"] { z-index: -1; width: 320px; height: 200px; min-width: 60px; min-height: 40px; padding: 0;
     border: 2.5px solid #aab2bc; border-radius: 10px; background: none; box-shadow: none; resize: both; overflow: hidden;
     clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, 12px 12px, 12px calc(100% - 12px), calc(100% - 12px) calc(100% - 12px), calc(100% - 12px) 12px, 12px 12px); }
-  /* Text: plain lines with no card. A drag anywhere moves it, so the lines are edited after a double-click. */
-  body[data-mode="hld"] .box[data-kind="text"] { min-width: 0; padding: 2px; border: 0; background: none; box-shadow: none; }
+  /* Text: plain lines on a white patch with no border, so the dot grid does not run through the words. A drag
+     anywhere moves it, so the lines are edited after a double-click. */
+  body[data-mode="hld"] .box[data-kind="text"] { min-width: 0; padding: 2px; border: 0; border-radius: 4px; background: #fff; box-shadow: none; }
   body[data-mode="hld"] .box[data-kind="text"] input:not(:focus) { pointer-events: none; }
-  /* Text with Heading: a small browser window, with three dots and a left-aligned heading in its title bar. */
+  /* Text with Heading: a card with a left-aligned heading in a grey bar above the lines. */
   body[data-mode="hld"] .box[data-kind="titled"] { min-width: 180px; padding: 0; border: 1.5px solid #c4cad2; border-radius: 8px; overflow: hidden; }
   body[data-mode="hld"] .box[data-kind="titled"] .head { flex-direction: row; gap: 10px; padding: 6px 10px; background: #f1f3f5; border-bottom: 1px solid #dde1e5; }
-  body[data-mode="hld"] .box[data-kind="titled"] .head::before { content: ''; flex: none; width: 7px; height: 7px; margin-right: 16px; border-radius: 50%; background: #cfd4da; box-shadow: 11px 0 #cfd4da, 22px 0 #cfd4da; }
   body[data-mode="hld"] .box[data-kind="titled"] .name { flex: 1; text-align: left; }
   body[data-mode="hld"] .box[data-kind="titled"] .sec { padding: 6px 0; }
   body[data-mode="hld"] .box[data-kind="text"] .item input, body[data-mode="hld"] .box[data-kind="titled"] .item input { padding: 1px 10px; text-align: left; font: 13px system-ui, sans-serif; color: #333; }
   body[data-mode="hld"] .box[data-kind="text"] .item input { padding: 1px 4px; font-size: 14px; }
-  body[data-mode="hld"] .box[data-kind="text"] input::placeholder { color: #aaa; }
+  /* Empty lines in Text show as blank lines, but a Text whose only line is empty shows a grey "text", so it does not vanish. */
+  body[data-mode="hld"] .box[data-kind="text"] .item:only-child input::placeholder { color: #aaa; }
   .box input:focus { background: #eef4ff; }
   .box input::placeholder { color: transparent; }
   .box input:focus::placeholder { color: #aaa; }
