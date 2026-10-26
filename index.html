@@ -90,7 +90,7 @@
      only a 12px band along its edge clickable, so clicks inside reach the canvas. Drag it by that band and resize it
      with the browser's grip in the bottom-right corner. */
   body[data-mode="hld"] .box[data-kind="group"] { z-index: -1; width: 320px; height: 200px; min-width: 60px; min-height: 40px; padding: 0;
-    border: 1.5px solid #c4cad2; border-radius: 10px; background: none; box-shadow: none; resize: both; overflow: hidden;
+    border: 2.5px solid #aab2bc; border-radius: 10px; background: none; box-shadow: none; resize: both; overflow: hidden;
     clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, 12px 12px, 12px calc(100% - 12px), calc(100% - 12px) calc(100% - 12px), calc(100% - 12px) 12px, 12px 12px); }
   /* Text: plain lines with no card. A drag anywhere moves it, so the lines are edited after a double-click. */
   body[data-mode="hld"] .box[data-kind="text"] { min-width: 0; padding: 2px; border: 0; background: none; box-shadow: none; }
@@ -140,8 +140,9 @@
       <marker id="tri" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">
         <path d="M0,0 L12,6 L0,12 z" fill="#fff" stroke="#333" stroke-width="1.5"/>
       </marker>
-      <marker id="open" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">
-        <path d="M0,0 L12,6 L0,12" fill="none" stroke="#333" stroke-width="1.5"/>
+      <!-- The open head is drawn smaller than the triangle; its stroke is wider in marker units so it stays as thick. -->
+      <marker id="open" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto">
+        <path d="M0,0 L12,6 L0,12" fill="none" stroke="#333" stroke-width="2.1"/>
       </marker>
     </defs>
     <path id="temp"/>
