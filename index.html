@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UML Class Diagram</title>
+<style>
+  body { margin: 0; overflow: hidden; font-family: system-ui, sans-serif; background: #fafafa; }
+  /* Fixed, not sticky, so panning sideways never moves it; the board starts below its 48px height. */
+  header { position: fixed; top: 0; left: 0; right: 0; height: 48px; box-sizing: border-box; z-index: 10; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #ddd; }
+  header b { margin-right: 6px; font-size: 15px; }
+  /* Toolbar buttons share the class boxes' border, corners and shadow. */
+  header button, dialog button { font: 14px system-ui, sans-serif; padding: 4px 12px; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; cursor: pointer; white-space: nowrap; }
+  header button:hover, dialog button:hover { background: #eef4ff; }
+  header button:active, dialog button:active { box-shadow: none; transform: translateY(1px); }
+  /* Toolbar icons are Lucide icons (lucide.dev, ISC licence), pasted inline so the page needs no download. */
+  header button { display: inline-flex; align-items: center; gap: 6px; }
+  header svg, #menu svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  dialog button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  dialog button.primary:hover { background: #1d4ed8; }
+
+  dialog { width: min(560px, 90vw); padding: 16px 18px; border: 1.5px solid #333; border-radius: 6px; box-shadow: 0 8px 24px #0003; font: 14px system-ui, sans-serif; }
+  dialog::backdrop { background: #0003; }
+  dialog h3 { margin: 0 0 12px; font-size: 16px; }
+  dialog p { margin: 0 0 10px; color: #444; }
+  dialog label { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  dialog input, dialog textarea { font: 14px Consolas, monospace; border: 1.5px solid #333; border-radius: 4px; padding: 5px 8px; outline-color: #2563eb; }
+  dialog input { flex: 1; }
+  dialog textarea { display: block; box-sizing: border-box; width: 100%; height: 300px; resize: vertical; }
+  dialog .err { color: #c00; margin: 8px 0 0; }
+  dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .panning, .panning * { cursor: grabbing !important; }
+  /* The board fills the window below the header. #world holds the boxes and arrows and is shifted by the pan offset. */
+  #board { position: fixed; inset: 48px 0 0 0; overflow: hidden; background: radial-gradient(#d4d4d4 1px, transparent 1px) 0 0 / 20px 20px; }
+  #world { position: absolute; left: 0; top: 0; }
+  #hint { position: absolute; inset: 0; display: grid; place-items: center; color: #999; font-size: 15px; pointer-events: none; }
+  #hint[hidden] { display: none; }
+  #wires { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+  .line { stroke: #333; stroke-width: 1.5; fill: none; }
+  .implements { stroke-dasharray: 6 4; }
+  .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: context-menu; }
+  g:hover .line { stroke: #2563eb; }
+  .mult { font: 14px Consolas, monospace; }
+  #temp { stroke: #2563eb; stroke-width: 1.5; stroke-dasharray: 4 3; }
+
+  .box { position: absolute; min-width: 140px; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; cursor: move; }
+  .head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
+  .badge { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: bold 12px system-ui, sans-serif; }
+  .badge.class { background: #dbeafe; color: #1e40af; }
+  .badge.abstract { background: #ccfbf1; color: #115e59; }
+  .badge.interface { background: #dcfce7; color: #166534; }
+  .badge.enum { background: #fef3c7; color: #92400e; }
+  .badge.record { background: #ede9fe; color: #5b21b6; }
+  .sec { padding: 3px 0; border-top: 1.5px solid #333; }
+  .box input { display: block; box-sizing: border-box; min-width: 100%; field-sizing: content; border: 0; outline: 0; background: transparent; padding: 2px 10px; font: 14px Consolas, monospace; cursor: text; }
+  /* Each field or method row: a small f or m tag, then the text box. */
+  .item { display: flex; align-items: center; gap: 6px; padding-left: 8px; }
+  .item input { flex: 1; min-width: 0; padding-left: 0; }
+  .tag { flex: none; width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center; font: bold 10px system-ui, sans-serif; }
+  /* Centre each letter's visible shape, not its line box: trim the text to cap height ("C", "f") or, for the short
+     "m", to x-height. Browsers without text-box support fall back to centring the line box. */
+  .badge, .tag { text-box: trim-both cap alphabetic; }
+  /* The font's x-height is a little taller than its "m", so the 2px bottom padding lifts the letter 1px more. */
+  .tag.methods { text-box: trim-both ex alphabetic; box-sizing: border-box; padding-bottom: 2px; }
+  .tag.fields { background: #fde8d4; color: #b4561c; }
+  .tag.methods { background: #f6dbe8; color: #a3376b; }
+  /* An empty row hides its tag until it is focused, so an empty section stays blank. */
+  .item:has(input:placeholder-shown:not(:focus)) .tag { visibility: hidden; }
+  .box input:focus { background: #eef4ff; }
+  .box input::placeholder { color: transparent; }
+  .box input:focus::placeholder { color: #aaa; }
+  /* The name is edited after a double-click, so a plain drag on the title bar moves the box. */
+  .box .name { flex: 1; min-width: 0; padding: 0 4px; text-align: center; font: bold 15px system-ui, sans-serif; pointer-events: none; }
+  .box .name:focus { pointer-events: auto; }
+
+  #menu { position: fixed; z-index: 20; display: flex; flex-direction: column; min-width: 180px; padding: 4px; background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 6px 16px #0002; font: 14px system-ui, sans-serif; }
+  #menu[hidden] { display: none; }
+  /* Each item: an icon column (kind badge, trash can, or empty), the label, and a ✓ at the right when selected. */
+  #menu button { position: relative; display: flex; align-items: center; gap: 10px; font: inherit; text-align: left; padding: 5px 30px 5px 8px; border: 0; border-radius: 5px; background: none; cursor: pointer; }
+  #menu button:hover { background: #eef4ff; }
+  #menu button.on::after { content: '✓'; position: absolute; right: 10px; }
+  #menu .ico { flex: none; width: 18px; display: grid; place-items: center; }
+  #menu .badge { width: 18px; height: 18px; font-size: 11px; }
+  #menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid #eee; }
+</style>
+</head>
+<body>
+<header>
+  <b>UML</b>
+  <button id="add"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Class</button>
+  <button id="export"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Export</button>
+  <button id="import"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>Import</button>
+  <button id="clear"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Clear</button>
+  <input id="file" type="file" accept=".json" hidden>
+</header>
+<div id="board"><div id="hint">Right-click to add a class</div><div id="world">
+  <svg id="wires">
+    <defs>
+      <marker id="tri" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">
+        <path d="M0,0 L12,6 L0,12 z" fill="#fff" stroke="#333" stroke-width="1.5"/>
+      </marker>
+      <marker id="open" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">
+        <path d="M0,0 L12,6 L0,12" fill="none" stroke="#333" stroke-width="1.5"/>
+      </marker>
+    </defs>
+    <path id="temp"/>
+  </svg>
+</div></div>
+<div id="menu" hidden></div>
+<dialog id="dlg"></dialog>
+
+<script>
+const KINDS = { class: ['C', 'Class'], abstract: ['A', 'Abstract Class'], interface: ['I', 'Interface'], enum: ['E', 'Enum'], record: ['R', 'Record'] };
+const TYPES = ['extends', 'implements', 'has-a'];
+// Multiplicity choices for a has-a arrow: [menu label, label at the arrow's tail, label at its head].
+// They read along the arrow: on Order → Item, One-to-Many means one Order has many Items.
+const MULTS = [['None'], ['One-to-One', '1', '1'], ['One-to-Many', '1', '*'], ['Many-to-One', '*', '1'], ['Many-to-Many', '*', '*']];
+const KEY = 'uml-tool';
+const $ = id => document.getElementById(id);
+const board = $('board'), world = $('world'), wires = $('wires'), temp = $('temp'), menu = $('menu'), dlg = $('dlg');
+
+// `state` is the whole diagram. `last` is its JSON as of the latest commit; `undo` holds earlier commits.
+let state = load(), last = JSON.stringify(state), undo = [], drag = null;
+
+function blank() { return { classes: [], links: [] }; }
+function load() { try { return parseDiagram(localStorage.getItem(KEY)) || blank(); } catch { return blank(); } }
+
+// Returns the diagram in the JSON `text`, or null when it is not one this page can draw. Imports may be
+// hand-written or AI-written, so every class and arrow is checked. Empty sections get one blank row to type into.
+function parseDiagram(text) {
+  try {
+    const s = JSON.parse(text), ids = new Set();
+    const ok = Array.isArray(s.classes) && Array.isArray(s.links) &&
+      s.classes.every(c => c && typeof c.id === 'string' && /^[\w-]+$/.test(c.id) && !ids.has(c.id) && ids.add(c.id) &&
+        Object.hasOwn(KINDS, c.kind) && typeof c.name === 'string' && Number.isFinite(c.x) && Number.isFinite(c.y) &&
+        [c.fields, c.methods].every(rows => Array.isArray(rows) && rows.every(t => typeof t === 'string'))) &&
+      s.links.every(l => l && ids.has(l.from) && ids.has(l.to) && TYPES.includes(l.type));
+    if (!ok) return null;
+    for (const c of s.classes) for (const rows of [c.fields, c.methods]) if (!rows.length) rows.push('');
+    return s;
+  } catch { return null; }
+}
+// Storage can be blocked (private windows, some previews); the diagram then lives only until the tab closes.
+function persist() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
+function commit() {
+  const s = JSON.stringify(state);
+  if (s !== last) { undo.push(last); last = s; }
+  persist();
+}
+const byId = id => state.classes.find(c => c.id === id);
+const boxOf = id => board.querySelector(`.box[data-id="${id}"]`);
+const rowSel = (id, sec, i) => `.box[data-id="${id}"] input[data-sec="${sec}"][data-i="${i}"]`;
+// Diagram coordinates of a mouse event; #world's corner is the diagram origin wherever the pan has moved it.
+const pt = e => { const r = world.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+
+// `view` is the pan offset: how far the diagram origin sits from the board's top-left corner, in pixels.
+let view = { x: 0, y: 0 };
+try { view = JSON.parse(localStorage.getItem(KEY + '-view')) || view; } catch {}
+function pan(dx, dy) {
+  view.x += dx;
+  view.y += dy;
+  world.style.transform = `translate(${view.x}px, ${view.y}px)`;
+  board.style.backgroundPosition = `${view.x}px ${view.y}px`;
+  try { localStorage.setItem(KEY + '-view', JSON.stringify(view)); } catch {}
+}
+
+function svg(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+// Rebuild every box from `state`, then focus the input matching `focus` (select its text when `select` is set).
+// With no `focus`, the input that had focus gets it back, with the same text selected, if it still exists.
+function render(focus, select) {
+  const a = document.activeElement, box = a?.closest('.box');
+  const keep = !focus && box && [a.classList.contains('name') ? `.box[data-id="${box.dataset.id}"] .name`
+    : rowSel(box.dataset.id, a.dataset.sec, a.dataset.i), a.selectionStart, a.selectionEnd];
+  board.querySelectorAll('.box').forEach(b => b.remove());
+  for (const c of state.classes) world.append(boxEl(c));
+  $('hint').hidden = state.classes.length > 0;
+  drawWires();
+  if (keep) {
+    const f = board.querySelector(keep[0]);
+    f?.focus();
+    f?.setSelectionRange(keep[1], keep[2]);
+    return;
+  }
+  const f = focus && board.querySelector(focus);
+  if (f) { f.focus(); select ? f.select() : f.setSelectionRange(f.value.length, f.value.length); }
+}
+
+function boxEl(c) {
+  const el = document.createElement('div');
+  el.className = 'box';
+  el.dataset.id = c.id;
+  el.style.left = c.x + 'px';
+  el.style.top = c.y + 'px';
+  el.innerHTML = `<div class="head"><span class="badge ${c.kind}">${KINDS[c.kind][0]}</span><input class="name"></div>
+    <div class="sec"></div><div class="sec"></div>`;
+  el.querySelector('.name').value = c.name;
+  const secs = el.querySelectorAll('.sec');
+  [['fields', 'f', c.kind === 'enum' ? 'CONSTANT' : 'field'], ['methods', 'm', 'method()']].forEach(([sec, tag, hint], s) =>
+    c[sec].forEach((text, i) => {
+      const item = document.createElement('div');
+      item.className = 'item';
+      item.innerHTML = `<span class="tag ${sec}">${tag}</span>`;
+      const inp = document.createElement('input');
+      Object.assign(inp, { value: text, placeholder: hint });
+      Object.assign(inp.dataset, { sec, i });
+      item.append(inp);
+      secs[s].append(item);
+    }));
+  return el;
+}
+
+function rect(id) {
+  const el = boxOf(id);
+  if (!el) return null;
+  const x = el.offsetLeft, y = el.offsetTop, w = el.offsetWidth, h = el.offsetHeight;
+  return { x, y, w, h, cx: x + w / 2, cy: y + h / 2 };
+}
+
+// The point where the line from the centre of `r` toward (tx, ty) leaves the box border.
+function edge(r, tx, ty) {
+  const dx = tx - r.cx, dy = ty - r.cy;
+  const s = Math.min(Math.abs(r.w / 2 / dx), Math.abs(r.h / 2 / dy));
+  return isFinite(s) ? [r.cx + dx * s, r.cy + dy * s] : [r.cx, r.cy];
+}
+
+// A multiplicity label 30px along the line from (x, y) toward (ox, oy), placed 12px to one side of the line.
+// The text starts or ends at that point on the side away from the line, so a long label such as 0..* never
+// crosses a vertical arrow; on a near-horizontal arrow it is centred above or below the line.
+function label(text, x, y, ox, oy) {
+  const len = Math.hypot(ox - x, oy - y) || 1, ux = (ox - x) / len, uy = (oy - y) / len;
+  const px = -uy, py = ux; // unit vector perpendicular to the line
+  const t = svg('text', {
+    x: x + ux * 30 + px * 12, y: y + uy * 30 + py * 12 + 5, class: 'mult',
+    'text-anchor': px > 0.3 ? 'start' : px < -0.3 ? 'end' : 'middle',
+  });
+  t.textContent = text;
+  return t;
+}
+
+function drawWires() {
+  wires.querySelectorAll('g').forEach(g => g.remove());
+  state.links.forEach((l, i) => {
+    const a = rect(l.from), b = rect(l.to);
+    if (!a || !b) return;
+    const [x1, y1] = edge(a, b.cx, b.cy), [x2, y2] = edge(b, a.cx, a.cy);
+    const d = `M${x1},${y1}L${x2},${y2}`;
+    const g = svg('g', { 'data-i': i });
+    g.append(svg('path', { d, class: `line ${l.type}`, 'marker-end': `url(#${l.type === 'has-a' ? 'open' : 'tri'})` }),
+             svg('path', { d, class: 'hit' }));
+    if (l.type === 'has-a') {
+      if (l.fromLabel) g.append(label(l.fromLabel, x1, y1, x2, y2));
+      if (l.toLabel) g.append(label(l.toLabel, x2, y2, x1, y1));
+    }
+    wires.insertBefore(g, temp);
+  });
+}
+
+// Arrow type when dragging from a box of kind `a` to a box of kind `b`; right-click overrides it.
+function defaultType(a, b) {
+  if (b === 'interface') return a === 'interface' ? 'extends' : 'implements';
+  const isClass = k => k === 'class' || k === 'abstract';
+  return isClass(a) && isClass(b) ? 'extends' : 'has-a';
+}
+
+// Adds a box of `kind` at diagram point (x, y), named after its kind ("NewAbstractClass"), with the name selected.
+// The "New" prefix keeps an unrenamed box from clashing with Java's own Class, Enum and Record.
+function addClass({ x, y }, kind = 'class') {
+  const name = 'New' + KINDS[kind][1].replace(/ /g, '');
+  const c = { id: Math.random().toString(36).slice(2, 9), kind, name, x, y, fields: [''], methods: [''] };
+  state.classes.push(c);
+  commit();
+  render(`.box[data-id="${c.id}"] .name`, true);
+}
+
+// ---- Editing text ----
+board.addEventListener('input', e => {
+  const inp = e.target, c = byId(inp.closest('.box').dataset.id);
+  if (inp.classList.contains('name')) c.name = inp.value;
+  else c[inp.dataset.sec][+inp.dataset.i] = inp.value;
+  persist();
+  drawWires();
+});
+// A method row typed without brackets gets () after its name: "park" → "park()", "park: void" → "park(): void".
+function withParens(t) {
+  if (!t.trim() || t.includes('(')) return t;
+  const k = t.indexOf(':');
+  return k < 0 ? t.trimEnd() + '()' : t.slice(0, k).trimEnd() + '()' + t.slice(k);
+}
+
+// `change` fires when a text box loses focus after an edit.
+board.addEventListener('change', e => {
+  const inp = e.target;
+  if (inp.dataset.sec === 'methods') {
+    inp.value = withParens(inp.value);
+    byId(inp.closest('.box').dataset.id).methods[+inp.dataset.i] = inp.value;
+    drawWires();
+  }
+  commit();
+});
+
+board.addEventListener('keydown', e => {
+  const inp = e.target;
+  if (inp.tagName !== 'INPUT') return;
+  const box = inp.closest('.box'), c = byId(box.dataset.id);
+  const all = [...box.querySelectorAll('input')], k = all.indexOf(inp);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    all[k + (e.key === 'ArrowDown' ? 1 : -1)]?.focus();
+    return;
+  }
+  if (inp.classList.contains('name')) {
+    if (e.key === 'Enter') { e.preventDefault(); all[1].focus(); }
+    return;
+  }
+  // A row is one field or method; each section always keeps at least one row so it can be typed into.
+  const sec = inp.dataset.sec, i = +inp.dataset.i, rows = c[sec];
+  // In a method, typing ( adds the closing ) too, and typing ) just before an existing ) steps over it.
+  if (sec === 'methods' && (e.key === '(' || (e.key === ')' && inp.value[inp.selectionStart] === ')'))) {
+    e.preventDefault();
+    const at = inp.selectionStart;
+    if (e.key === '(') inp.setRangeText('()', at, inp.selectionEnd);
+    inp.setSelectionRange(at + 1, at + 1);
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (sec === 'methods') rows[i] = withParens(rows[i]);
+    rows.splice(i + 1, 0, '');
+    commit();
+    render(rowSel(c.id, sec, i + 1));
+  } else if (e.key === 'Backspace' && inp.value === '' && rows.length > 1) {
+    e.preventDefault();
+    rows.splice(i, 1);
+    commit();
+    render(rowSel(c.id, sec, Math.max(i - 1, 0)));
+  }
+});
+
+// ---- Moving boxes and drawing arrows ----
+// Left-drag on a box, outside its text boxes, moves it. Right-drag from one box onto another draws an arrow, and
+// right-drag on empty canvas pans it. A right-click without moving opens the menu instead.
+let skipMenu = false; // set by a right-drag, so the contextmenu event that follows its release opens nothing
+board.addEventListener('pointerdown', e => {
+  skipMenu = false;
+  const box = e.target.closest('.box');
+  if (!box) {
+    if (e.button === 2) drag = { pan: true, right: true, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, moved: false };
+    return;
+  }
+  const c = byId(box.dataset.id), p = pt(e);
+  if (e.button === 2) drag = { from: c, x: e.clientX, y: e.clientY, moved: false };
+  else if (e.button === 0 && e.target.tagName !== 'INPUT') {
+    e.preventDefault();
+    drag = { move: c, dx: p.x - c.x, dy: p.y - c.y };
+  }
+});
+
+// Dragging with the middle button or turning the wheel pans the canvas, as in Excalidraw. Shift+wheel pans sideways.
+board.addEventListener('wheel', e => {
+  if (e.ctrlKey) return; // Ctrl+wheel stays the browser's zoom
+  e.preventDefault();
+  const sideways = e.shiftKey && !e.deltaX;
+  pan(-(sideways ? e.deltaY : e.deltaX), sideways ? 0 : -e.deltaY);
+}, { passive: false });
+window.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); }); // stops the browser's autoscroll
+window.addEventListener('pointerdown', e => {
+  if (e.button !== 1) return;
+  drag = { pan: true, x: e.clientX, y: e.clientY };
+  document.body.classList.add('panning');
+});
+
+window.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (!e.buttons) return endDrag(e); // the button was released where no pointerup reached the page
+  if (drag.pan) {
+    // A right-button pan starts once the mouse has moved 5px, then catches up to the cursor.
+    if (drag.right && !drag.moved) {
+      if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) <= 4) return;
+      drag.moved = true;
+      document.body.classList.add('panning');
+    }
+    pan(e.clientX - drag.x, e.clientY - drag.y);
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    return;
+  }
+  const p = pt(e);
+  if (drag.move) {
+    const c = drag.move, el = boxOf(c.id);
+    c.x = p.x - drag.dx;
+    c.y = p.y - drag.dy;
+    el.style.left = c.x + 'px';
+    el.style.top = c.y + 'px';
+    drawWires();
+  } else {
+    // A right-drag counts once the mouse has moved 5px, so a plain right-click still opens the menu.
+    drag.moved ||= Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4;
+    const r = rect(drag.from.id);
+    if (drag.moved && r) temp.setAttribute('d', `M${r.cx},${r.cy}L${p.x},${p.y}`);
+  }
+});
+
+function endDrag(e) {
+  if (drag.moved) skipMenu = true; // only right-button drags set `moved`
+  if (drag.from && drag.moved) {
+    temp.setAttribute('d', '');
+    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.box');
+    const a = drag.from, b = target && byId(target.dataset.id);
+    if (b && b !== a) state.links.push({ from: a.id, to: b.id, type: defaultType(a.kind, b.kind) });
+  }
+  drag = null;
+  document.body.classList.remove('panning');
+  commit();
+  drawWires();
+}
+window.addEventListener('pointerup', e => { if (drag) endDrag(e); });
+
+// Double-clicking a title bar edits the class name.
+board.addEventListener('dblclick', e => {
+  const n = e.target.closest('.head')?.querySelector('.name');
+  if (n) { n.focus(); n.select(); }
+});
+
+// ---- Right-click menus ----
+const badge = k => `<span class="badge ${k}">${KINDS[k][0]}</span>`;
+const TRASH = '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+
+// Each item is [label, onClick, isSelected, iconHtml]; null draws a divider.
+function openMenu(e, items) {
+  e.preventDefault();
+  menu.replaceChildren(...items.map(item => {
+    if (!item) return document.createElement('hr');
+    const b = document.createElement('button');
+    b.innerHTML = `<span class="ico">${item[3] || ''}</span>`;
+    b.append(item[0]);
+    if (item[2]) b.className = 'on';
+    b.onclick = () => { menu.hidden = true; item[1](); commit(); render(); };
+    return b;
+  }));
+  menu.hidden = false;
+  // Open at the cursor, shifted left or up when it would run past the window edge.
+  menu.style.left = Math.min(e.clientX, innerWidth - menu.offsetWidth - 4) + 'px';
+  menu.style.top = Math.min(e.clientY, innerHeight - menu.offsetHeight - 4) + 'px';
+}
+
+board.addEventListener('contextmenu', e => {
+  if (skipMenu) { skipMenu = false; return e.preventDefault(); }
+  const box = e.target.closest('.box'), g = e.target.closest('g[data-i]');
+  if (box) {
+    const c = byId(box.dataset.id);
+    openMenu(e, [
+      ...Object.entries(KINDS).map(([k, [, name]]) => [name, () => { c.kind = k; }, c.kind === k, badge(k)]),
+      null,
+      ['Delete', () => {
+        state.classes = state.classes.filter(x => x !== c);
+        state.links = state.links.filter(l => l.from !== c.id && l.to !== c.id);
+      }, false, TRASH],
+    ]);
+  } else if (g) {
+    const i = +g.dataset.i, l = state.links[i];
+    openMenu(e, [
+      ...TYPES.map(t => [t[0].toUpperCase() + t.slice(1), () => { l.type = t; }, l.type === t]),
+      ...(l.type === 'has-a' ? [null, ...MULTS.map(([name, from, to]) =>
+        [name, () => { l.fromLabel = from; l.toLabel = to; }, l.fromLabel === from && l.toLabel === to])] : []),
+      null,
+      ['Delete', () => { state.links.splice(i, 1); }, false, TRASH],
+    ]);
+  } else {
+    const p = pt(e);
+    openMenu(e, Object.entries(KINDS).map(([k, [, name]]) => ['New ' + name, () => addClass(p, k), false, badge(k)]));
+  }
+});
+
+document.addEventListener('pointerdown', e => { if (!menu.contains(e.target)) menu.hidden = true; });
+
+document.addEventListener('keydown', e => {
+  if (dlg.open) return; // the dialog's own text boxes keep their native undo
+  if (e.key === 'Escape') menu.hidden = true;
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    // Uncommitted typing is undone first; otherwise step back one commit.
+    if (JSON.stringify(state) === last) {
+      if (!undo.length) return;
+      last = undo.pop();
+    }
+    state = JSON.parse(last);
+    // An open menu or a drag in progress still points at objects from before the undo.
+    menu.hidden = true;
+    drag = null;
+    temp.setAttribute('d', '');
+    document.body.classList.remove('panning');
+    persist();
+    render();
+  }
+});
+
+// ---- Toolbar ----
+// Place the new box near the top-left of the visible part of the canvas, staggered so boxes don't stack exactly.
+$('add').onclick = () => {
+  const step = (state.classes.length % 5) * 30;
+  addClass({ x: 40 - view.x + step, y: 40 - view.y + step });
+};
+
+// ---- Dialogs: the page never uses the browser's alert, confirm or prompt ----
+// `html` is the dialog body. Each button is [label, onClick, isPrimary]; onClick receives the button and
+// returns false to keep the dialog open. Enter in a one-line text box clicks the primary button.
+function ask(title, html, buttons) {
+  dlg.innerHTML = `<h3></h3>${html}<div class="row"></div>`;
+  dlg.querySelector('h3').textContent = title;
+  for (const [label, onClick, primary] of buttons) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if (primary) b.className = 'primary';
+    b.onclick = () => { if (onClick?.(b) !== false) dlg.close(); };
+    dlg.querySelector('.row').append(b);
+  }
+  dlg.showModal();
+}
+dlg.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); dlg.querySelector('.primary')?.click(); }
+});
+
+// Export shows the diagram's JSON so it can be copied, or downloaded as a file to keep in the repo.
+$('export').onclick = () => {
+  ask('Export', '<label>File name <input id="fname" value="diagram"></label><textarea id="json" readonly></textarea>', [
+    ['Close'],
+    ['Copy', b => {
+      navigator.clipboard.writeText($('json').value).then(() => { b.textContent = 'Copied'; }, () => $('json').select());
+      return false;
+    }],
+    ['Download', () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([$('json').value], { type: 'application/json' }));
+      a.download = ($('fname').value.trim() || 'diagram').replace(/\.json$/, '') + '.json';
+      a.click();
+    }, true],
+  ]);
+  $('json').value = JSON.stringify(state, null, 2);
+};
+
+// Import replaces the diagram with pasted JSON or a chosen file. Ctrl+Z restores the previous diagram.
+$('import').onclick = () => ask('Import',
+  '<p>Paste a diagram\'s JSON, or choose a file saved with Export. This replaces the current diagram.</p>' +
+  '<textarea id="json"></textarea><p class="err" id="err"></p>', [
+    ['Cancel'],
+    ['Choose File…', () => { $('file').click(); return false; }],
+    ['Load', () => loadDiagram($('json').value), true],
+  ]);
+$('file').onchange = async () => {
+  const f = $('file').files[0];
+  $('file').value = '';
+  if (!f) return;
+  $('json').value = await f.text();
+  if (loadDiagram($('json').value) !== false) dlg.close();
+};
+
+// Replace the diagram with the JSON in `text`. Returns false, and shows why in the dialog, when it is not a diagram.
+function loadDiagram(text) {
+  const s = parseDiagram(text);
+  if (!s) {
+    $('err').textContent = 'This is not a diagram saved by this tool.';
+    return false;
+  }
+  state = s;
+  commit();
+  render();
+}
+
+$('clear').onclick = () => ask('Clear the diagram?', '<p>This deletes every class and arrow.</p>', [
+  ['Cancel'],
+  ['Clear', () => { state = blank(); commit(); render(); }, true],
+]);
+
+pan(0, 0);
+render();
+</script>
+</body>
+</html>
