@@ -61,6 +61,19 @@
   /* Pen ink sits above the boxes, but clicks pass through it to them. */
   #ink { position: absolute; left: 0; top: 0; z-index: 1; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
   #ink polyline { fill: none; stroke: #1971c2; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  /* Selected boxes get a blue outline, and a selected Box frame a blue border, since its clip-path hides an outline.
+     Arrows between two selected boxes turn blue, and selected strokes thicken. */
+  .box.sel { outline: 2px solid #2563eb; outline-offset: 2px; }
+  body[data-mode="hld"] .box.sel[data-kind="group"] { border-color: #2563eb; }
+  g.sel .line { stroke: #2563eb; }
+  /* While several items are selected, their rows ignore the mouse, so the whole box shows the move cursor and drags
+     the selection; a double-click still edits a row. */
+  body.multi .box.sel input:not(:focus) { pointer-events: none; }
+  #ink polyline.sel { stroke-width: 5; stroke-opacity: .5; }
+  /* The rectangle a left-drag on empty canvas draws to select what lies wholly inside it. It sits on the board in
+     screen pixels rather than in the scaled #world, where its moving edges could leave stale lines on screen. */
+  #band { position: absolute; z-index: 1; border: 1px solid #2563eb; background: #2563eb12; pointer-events: none; }
+  #band[hidden] { display: none; }
 
   .box { position: absolute; min-width: 140px; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; cursor: move; }
   .head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
@@ -164,7 +177,7 @@
     <path id="temp"/>
   </svg>
   <svg id="ink"></svg>
-</div></div>
+</div><div id="band" hidden></div></div>
 <div id="zoom">
   <button id="zoom-out" title="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
   <button id="zoom-reset" title="Reset to 100%">100%</button>
@@ -337,8 +350,8 @@ function render(focus, select) {
   board.querySelectorAll('.box').forEach(b => b.remove());
   for (const c of state.classes) world.append(boxEl(c));
   $('hint').hidden = state.classes.length > 0;
-  drawWires();
-  drawInk();
+  pruneSel();
+  showSel();
   if (keep) {
     const f = board.querySelector(keep[0]);
     f?.focus();
@@ -426,7 +439,7 @@ function drawWires() {
     if (!a || !b) return;
     const [x1, y1] = edge(a, b.cx, b.cy), [x2, y2] = edge(b, a.cx, a.cy);
     const d = `M${x1},${y1}L${x2},${y2}`;
-    const g = svg('g', { 'data-i': i });
+    const g = svg('g', { 'data-i': i, class: sel.has(l.from) && sel.has(l.to) ? 'sel' : '' });
     const inherits = l.type === 'extends' || l.type === 'implements';
     g.append(svg('path', { d, class: `line ${l.type}`, 'marker-end': `url(#${inherits ? 'tri' : 'open'})` }),
              svg('path', { d, class: 'hit' }));
@@ -444,7 +457,12 @@ function drawWires() {
   });
 }
 
-const drawInk = () => ink.replaceChildren(...state.ink.map(k => svg('polyline', { points: k.join(' ') })));
+const drawInk = () => ink.replaceChildren(...state.ink.map(k => svg('polyline', { points: k.join(' '), class: selInk.has(k) ? 'sel' : '' })));
+// A stroke's bounding box as [left, top, right, bottom].
+function bounds(k) {
+  const xs = k.filter((_, i) => i % 2 === 0), ys = k.filter((_, i) => i % 2);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
 
 // Distance from point p to the segment from (ax, ay) to (bx, by).
 function segDist(p, ax, ay, bx, by) {
@@ -457,12 +475,14 @@ function touches(k, p, r) {
   return false;
 }
 
+const newId = () => Math.random().toString(36).slice(2, 9);
+
 // Adds a box of `kind` at diagram point (x, y), named after its kind ("NewAbstractClass", "Cache"), with the name
 // selected and one empty row in each section. A Box starts 320 x 200 with nothing to type; Text starts in its first line.
 function addClass({ x, y }, kind) {
   const [, label, shape] = M.kinds[kind];
   const name = shape === 'window' ? 'Heading' : shape ? '' : M.newName(label);
-  const c = { id: Math.random().toString(36).slice(2, 9), kind, name, x, y };
+  const c = { id: newId(), kind, name, x, y };
   for (const [sec] of M.sections) c[sec] = [''];
   if (shape === 'frame') Object.assign(c, { w: 320, h: 200 });
   state.classes.push(c);
@@ -533,9 +553,86 @@ board.addEventListener('keydown', e => {
   }
 });
 
+// ---- Selecting, copying and pasting ----
+// `sel` holds the ids of the selected boxes and `selInk` the selected pen strokes; an arrow counts as selected when
+// both its ends are. Neither is saved or undone, and render() drops whatever no longer exists. `clip` is the latest
+// copy: its JSON, its mode, and how far right each paste lands from the last.
+let sel = new Set(), selInk = new Set(), clip = null;
+// Drops selected boxes and strokes that are no longer in the diagram.
+function pruneSel() {
+  for (const id of sel) if (!byId(id)) sel.delete(id);
+  for (const k of selInk) if (!state.ink.includes(k)) selInk.delete(k);
+}
+// Strokes ignore the mouse, so a press anywhere within a selected stroke's bounding box (plus 6px) drags the selection.
+function onSelInk(p) {
+  const pad = 6 / view.z;
+  return [...selInk].some(k => {
+    const [l, t, r, b] = bounds(k);
+    return p.x >= l - pad && p.x <= r + pad && p.y >= t - pad && p.y <= b + pad;
+  });
+}
+function showSel() {
+  board.querySelectorAll('.box').forEach(b => b.classList.toggle('sel', sel.has(b.dataset.id)));
+  document.body.classList.toggle('multi', sel.size + selInk.size > 1);
+  drawWires();
+  drawInk();
+}
+// Copying keeps the selected boxes, the arrows between them, and the selected strokes. Each paste lands one
+// selection-width plus 60px further right, so a whole diagram pasted beside itself becomes a second data centre.
+function copy() {
+  const rs = [...sel].map(rect).filter(Boolean), ks = [...selInk].map(bounds);
+  const left = Math.min(...rs.map(r => r.x), ...ks.map(b => b[0])), right = Math.max(...rs.map(r => r.x + r.w), ...ks.map(b => b[2]));
+  clip = { mode, n: 0, step: right - left + 60, text: JSON.stringify({
+    classes: state.classes.filter(c => sel.has(c.id)),
+    links: state.links.filter(l => sel.has(l.from) && sel.has(l.to)),
+    ink: [...selInk],
+  }) };
+}
+// Pastes fresh copies with new ids and selects them, so they can be dragged into place straight away.
+function paste() {
+  const s = JSON.parse(clip.text), dx = clip.step * ++clip.n, ids = {};
+  for (const c of s.classes) { c.id = ids[c.id] = newId(); c.x += dx; }
+  for (const l of s.links) { l.from = ids[l.from]; l.to = ids[l.to]; }
+  for (const k of s.ink) for (let i = 0; i < k.length; i += 2) k[i] += dx;
+  state.classes.push(...s.classes);
+  state.links.push(...s.links);
+  state.ink.push(...s.ink);
+  sel = new Set(s.classes.map(c => c.id));
+  selInk = new Set(s.ink);
+  commit();
+  render();
+}
+// Outside a text box: Ctrl+A selects everything, Ctrl+C and Ctrl+V copy and paste, Delete or Backspace deletes the
+// selection, and Escape clears it.
+document.addEventListener('keydown', e => {
+  if (dlg.open || e.target.matches('input, textarea')) return;
+  const ctrl = e.ctrlKey || e.metaKey, key = e.key.toLowerCase(), any = sel.size || selInk.size;
+  if (ctrl && key === 'a') {
+    e.preventDefault();
+    sel = new Set(state.classes.map(c => c.id));
+    selInk = new Set(state.ink);
+    showSel();
+  } else if (ctrl && key === 'c' && any) copy();
+  else if (ctrl && key === 'v' && clip?.mode === mode) paste();
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && any) {
+    e.preventDefault();
+    state.classes = state.classes.filter(c => !sel.has(c.id));
+    state.links = state.links.filter(l => !sel.has(l.from) && !sel.has(l.to));
+    state.ink = state.ink.filter(k => !selInk.has(k));
+    commit();
+    render();
+  } else if (e.key === 'Escape') {
+    sel.clear();
+    selInk.clear();
+    showSel();
+  }
+});
+
 // ---- Moving boxes and drawing arrows ----
-// Left-drag on a box, outside its text boxes, moves it. Right-drag from one box onto another draws an arrow, and
-// right-drag on empty canvas pans it. A right-click without moving opens the menu instead.
+// Left-drag on a box, outside its text boxes, moves it along with the rest of the selection; clicking a box that is
+// not selected selects only it, and Shift+click adds or removes it. A mouse left-drag on empty canvas selects what
+// lies wholly inside its rectangle. Right-drag from one box onto another draws an arrow, and right-drag on empty
+// canvas pans it. A right-click without moving opens the menu instead.
 // A pen's tip draws ink anywhere, even over boxes. Holding either barrel button (the eraser, button 5, or the
 // right-click one, button 2) wipes out every stroke the pen touches. A finger drag on empty canvas pans, and two
 // fingers pinch to zoom and pan together.
@@ -568,6 +665,13 @@ board.addEventListener('pointerdown', e => {
   if (!box) {
     if (e.button === 2) drag = { pan: true, right: true, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, moved: false };
     else if (e.pointerType === 'touch') drag = { pan: true, x: e.clientX, y: e.clientY };
+    else if (e.button === 0) {
+      const p = pt(e);
+      if (!e.shiftKey && onSelInk(p)) return void (drag = { move: true, p });
+      if (!e.shiftKey) { sel.clear(); selInk.clear(); }
+      drag = { band: true, x: p.x, y: p.y, sel: new Set(sel), selInk: new Set(selInk) };
+      showSel();
+    }
     return;
   }
   const c = byId(box.dataset.id), p = pt(e), r = box.getBoundingClientRect();
@@ -577,7 +681,13 @@ board.addEventListener('pointerdown', e => {
   if (e.button === 2) drag = { from: c, x: e.clientX, y: e.clientY, moved: false };
   else if (e.button === 0 && e.target.tagName !== 'INPUT' && !onGrip) {
     e.preventDefault();
-    drag = { move: c, dx: p.x - c.x, dy: p.y - c.y };
+    document.activeElement.blur(); // so Delete and Ctrl+C reach the selection, not a text box still being edited
+    if (e.shiftKey) sel.has(c.id) ? sel.delete(c.id) : sel.add(c.id);
+    else if (!sel.has(c.id)) { sel = new Set([c.id]); selInk.clear(); }
+    showSel();
+    // A Shift+click that unselects the box moves nothing. A plain click on one item of a larger selection, released
+    // without moving, narrows the selection to that box (`only`).
+    if (sel.has(c.id)) drag = { move: true, p, only: !e.shiftKey && sel.size + selInk.size > 1 && c.id };
   }
 });
 
@@ -604,7 +714,11 @@ window.addEventListener('pointerdown', e => {
 
 window.addEventListener('pointermove', e => {
   if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
-  if (!drag) return;
+  if (!drag) {
+    // Hovering over selected strokes shows the move cursor, as a selected box does.
+    if (e.pointerType === 'mouse') board.style.cursor = selInk.size && onSelInk(pt(e)) ? 'move' : '';
+    return;
+  }
   if (!e.buttons) return endDrag(e); // the button was released where no pointerup reached the page
   // A pinch zooms by how much the fingers spread, about their midpoint, and pans as the midpoint moves.
   if (drag.pinch) {
@@ -635,17 +749,39 @@ window.addEventListener('pointermove', e => {
       if (drag.erase) state.ink = state.ink.filter(s => !touches(s, p, 10 / view.z));
     }
     if (k) drag.line.setAttribute('points', k.join(' '));
-    else if (state.ink.length !== n) drawInk();
+    else if (state.ink.length !== n) {
+      pruneSel(); // an erased stroke must not come back through a later Ctrl+C
+      drawInk();
+    }
     return;
   }
   const p = pt(e);
   if (drag.move) {
-    const c = drag.move, el = boxOf(c.id);
-    c.x = p.x - drag.dx;
-    c.y = p.y - drag.dy;
-    el.style.left = c.x + 'px';
-    el.style.top = c.y + 'px';
+    const dx = p.x - drag.p.x, dy = p.y - drag.p.y;
+    drag.p = p;
+    if (dx || dy) drag.only = false;
+    for (const id of sel) {
+      const c = byId(id), el = boxOf(id);
+      c.x += dx;
+      c.y += dy;
+      el.style.left = c.x + 'px';
+      el.style.top = c.y + 'px';
+    }
+    for (const k of selInk) for (let i = 0; i < k.length; i++) k[i] += i % 2 ? dy : dx;
+    if (selInk.size) drawInk();
     drawWires();
+  } else if (drag.band) {
+    const x = Math.min(p.x, drag.x), y = Math.min(p.y, drag.y), w = Math.abs(p.x - drag.x), h = Math.abs(p.y - drag.y);
+    const band = $('band'), inside = (l, t, r, b) => l >= x && t >= y && r <= x + w && b <= y + h;
+    Object.assign(band.style, { left: x * view.z + view.x + 'px', top: y * view.z + view.y + 'px', width: w * view.z + 'px', height: h * view.z + 'px' });
+    band.hidden = false;
+    sel = new Set(drag.sel);
+    for (const c of state.classes) {
+      const r = rect(c.id);
+      if (r && inside(r.x, r.y, r.x + r.w, r.y + r.h)) sel.add(c.id);
+    }
+    selInk = new Set([...drag.selInk, ...state.ink.filter(k => inside(...bounds(k)))]);
+    showSel();
   } else {
     // A right-drag counts once the mouse has moved 5px, so a plain right-click still opens the menu.
     drag.moved ||= Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4;
@@ -665,6 +801,12 @@ function endDrag(e) {
     const dup = b && state.links.some(l => l.from === a.id && l.to === b.id);
     if (b && b !== a && !dup) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind) });
   }
+  if (drag.only) {
+    sel = new Set([drag.only]);
+    selInk.clear();
+    showSel();
+  }
+  $('band').hidden = true;
   drag = null;
   document.body.classList.remove('panning');
   commit();
@@ -760,9 +902,13 @@ document.addEventListener('keydown', e => {
       last = undo.pop();
     }
     state = JSON.parse(last);
-    // An open menu or a drag in progress still points at objects from before the undo.
+    // An open menu or a drag in progress still points at objects from before the undo. The selection is cleared too:
+    // the restored strokes are new arrays, so they could not stay selected the way boxes would.
     menu.hidden = true;
     drag = null;
+    sel.clear();
+    selInk.clear();
+    $('band').hidden = true;
     temp.setAttribute('d', '');
     document.body.classList.remove('panning');
     persist();

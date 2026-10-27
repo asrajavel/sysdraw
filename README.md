@@ -14,7 +14,9 @@ It is one HTML file with no dependencies and no server. Your diagrams are saved 
 | Add a box | Right-click the canvas, or use the toolbar's add button |
 | Connect two boxes | Right-drag from one box onto another |
 | Change or delete a box or arrow | Right-click it |
-| Move a box | Drag it |
+| Move a box | Drag it; dragging a selected box moves the whole selection |
+| Select several | Drag a rectangle on empty canvas, Shift+click to add or remove a box, or Ctrl+A for everything; Escape clears it |
+| Copy, paste or delete the selection | Ctrl+C, then Ctrl+V pastes a copy beside it with its arrows and strokes; Delete removes it |
 | Edit a name or line | Double-click it; Enter adds a line, Backspace on an empty line removes it |
 | Pan | Scroll, Shift+scroll sideways, or drag with the middle or right button or a finger on empty canvas |
 | Scribble | Draw with a pen; hold either button on its side to rub out strokes, or right-click the canvas and choose Clear ink |
