@@ -265,9 +265,12 @@ function commit() {
 const byId = id => state.classes.find(c => c.id === id);
 const boxOf = id => board.querySelector(`.box[data-id="${id}"]`);
 const rowSel = (id, sec, i) => `.box[data-id="${id}"] input[data-sec="${sec}"][data-i="${i}"]`;
-// Diagram coordinates of a mouse event. #world's corner is the diagram origin wherever the pan has moved it, and the
-// zoom scales every distance from it.
-const pt = e => { const r = world.getBoundingClientRect(); return { x: (e.clientX - r.left) / view.z, y: (e.clientY - r.top) / view.z }; };
+// Diagram coordinates of a mouse event, rounded to whole pixels so saved positions stay short. #world's corner is the
+// diagram origin wherever the pan has moved it, and the zoom scales every distance from it.
+const pt = e => {
+  const r = world.getBoundingClientRect();
+  return { x: Math.round((e.clientX - r.left) / view.z), y: Math.round((e.clientY - r.top) / view.z) };
+};
 
 // Moves the diagram by (dx, dy) screen pixels, redraws it and the dot grid at the current zoom, and saves the view.
 function pan(dx, dy) {
@@ -587,7 +590,9 @@ function endDrag(e) {
     temp.setAttribute('d', '');
     const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.box');
     const a = drag.from, b = target && byId(target.dataset.id);
-    if (b && b !== a) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind) });
+    // A second arrow from a to b would hide exactly under the first, so it is not added; b to a still is.
+    const dup = b && state.links.some(l => l.from === a.id && l.to === b.id);
+    if (b && b !== a && !dup) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind) });
   }
   drag = null;
   document.body.classList.remove('panning');
@@ -693,7 +698,7 @@ document.addEventListener('keydown', e => {
 // Place the new box near the top-left of the visible part of the canvas, staggered so boxes don't stack exactly.
 $('add').onclick = () => {
   const step = (state.classes.length % 5) * 30;
-  addClass({ x: (40 - view.x) / view.z + step, y: (40 - view.y) / view.z + step }, M.add);
+  addClass({ x: Math.round((40 - view.x) / view.z) + step, y: Math.round((40 - view.y) / view.z) + step }, M.add);
 };
 // Plus and minus step 10 percentage points from the nearest multiple of 10%, so a wheel zoom such as 93% steps to 100%.
 $('zoom-in').onclick = () => zoom(Math.round(view.z * 10) / 10 + 0.1);
