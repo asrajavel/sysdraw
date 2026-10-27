@@ -16,8 +16,9 @@ It is one HTML file with no dependencies and no server. Your diagrams are saved 
 | Change or delete a box or arrow | Right-click it |
 | Move a box | Drag it |
 | Edit a name or line | Double-click it; Enter adds a line, Backspace on an empty line removes it |
-| Pan | Scroll, Shift+scroll sideways, or drag with the middle or right button on empty canvas |
-| Zoom | Ctrl+scroll (Cmd+scroll on a Mac), or the − and + in the bottom-left corner; click the percentage for 100% |
+| Pan | Scroll, Shift+scroll sideways, or drag with the middle or right button or a finger on empty canvas |
+| Scribble | Draw with a pen; hold either button on its side to rub out strokes, or right-click the canvas and choose Clear ink |
+| Zoom | Ctrl+scroll (Cmd+scroll on a Mac), a two-finger pinch, or the − and + in the bottom-left corner; click the percentage for 100% |
 | Undo | Ctrl+Z |
 | Save or share a diagram | Export copies or downloads it as JSON; Import loads one |
 

@@ -39,7 +39,8 @@
   .panning, .panning * { cursor: grabbing !important; }
   /* The board fills the window below the header. #world holds the boxes and arrows; it is shifted by the pan offset
      and scaled by the zoom from its top-left corner. */
-  #board { position: fixed; inset: 48px 0 0 0; overflow: hidden; background: radial-gradient(#d4d4d4 1px, transparent 1px) 0 0 / 20px 20px; }
+  /* touch-action: none hands pen and finger drags to the page instead of letting the browser scroll or zoom. */
+  #board { position: fixed; inset: 48px 0 0 0; overflow: hidden; touch-action: none; background: radial-gradient(#d4d4d4 1px, transparent 1px) 0 0 / 20px 20px; }
   #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
   /* Zoom control in the bottom-left corner: minus, the zoom percentage (a click resets it to 100%), and plus. */
   #zoom { position: fixed; left: 12px; bottom: 12px; z-index: 10; display: flex; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; overflow: hidden; }
@@ -57,6 +58,9 @@
   /* The type name sits on the middle of its arrow; the halo in the board's colour breaks the line behind it. */
   .type { font: 12px system-ui, sans-serif; fill: #666; stroke: #fafafa; stroke-width: 4px; paint-order: stroke; }
   #temp { stroke: #2563eb; stroke-width: 1.5; stroke-dasharray: 4 3; }
+  /* Pen ink sits above the boxes, but clicks pass through it to them. */
+  #ink { position: absolute; left: 0; top: 0; z-index: 1; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+  #ink polyline { fill: none; stroke: #1971c2; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 
   .box { position: absolute; min-width: 140px; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; cursor: move; }
   .head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
@@ -159,6 +163,7 @@
     </defs>
     <path id="temp"/>
   </svg>
+  <svg id="ink"></svg>
 </div></div>
 <div id="zoom">
   <button id="zoom-out" title="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
@@ -217,7 +222,7 @@ const MODES = {
 // They read along the arrow: on Order → Item, One-to-Many means one Order has many Items.
 const MULTS = [['None'], ['One-to-One', '1', '1'], ['One-to-Many', '1', '*'], ['Many-to-One', '*', '1'], ['Many-to-Many', '*', '*']];
 const $ = id => document.getElementById(id);
-const board = $('board'), world = $('world'), wires = $('wires'), temp = $('temp'), menu = $('menu'), dlg = $('dlg');
+const board = $('board'), world = $('world'), wires = $('wires'), temp = $('temp'), ink = $('ink'), menu = $('menu'), dlg = $('dlg');
 
 // `mode` is 'lld' or 'hld', and `M` is its entry in MODES. `state` is the mode's whole diagram. `last` is its JSON
 // as of the latest commit; `undo` holds earlier commits. `view` holds the pan offset and zoom: the diagram origin
@@ -225,7 +230,8 @@ const board = $('board'), world = $('world'), wires = $('wires'), temp = $('temp
 // of the script fills these in.
 let mode, M, state, last, undo, view, drag = null;
 
-function blank() { return { classes: [], links: [] }; }
+// `ink` holds the pen strokes, each a flat list of diagram points [x1, y1, x2, y2, ...] with at least two points.
+function blank() { return { classes: [], links: [], ink: [] }; }
 // `memory` keeps each mode's latest diagram JSON too, so switching modes loses nothing when storage is blocked.
 const memory = {};
 function load() {
@@ -245,8 +251,11 @@ function parseDiagram(text, m = mode) {
         [c.w, c.h].every(n => n === undefined || Number.isFinite(n)) &&
         sections.every(([sec]) => Array.isArray(c[sec]) && c[sec].every(t => typeof t === 'string'))) &&
       s.links.every(l => l && ids.has(l.from) && ids.has(l.to) && l.from !== l.to && types.includes(l.type) &&
-        [l.fromLabel, l.toLabel].every(t => t === undefined || typeof t === 'string'));
+        [l.fromLabel, l.toLabel].every(t => t === undefined || typeof t === 'string')) &&
+      (s.ink === undefined || Array.isArray(s.ink) &&
+        s.ink.every(k => Array.isArray(k) && k.length >= 4 && k.length % 2 === 0 && k.every(Number.isFinite)));
     if (!ok) return null;
+    s.ink ??= [];
     for (const c of s.classes) for (const [sec] of sections) if (!c[sec].length) c[sec].push('');
     delete s.mode;
     return s;
@@ -329,6 +338,7 @@ function render(focus, select) {
   for (const c of state.classes) world.append(boxEl(c));
   $('hint').hidden = state.classes.length > 0;
   drawWires();
+  drawInk();
   if (keep) {
     const f = board.querySelector(keep[0]);
     f?.focus();
@@ -434,6 +444,19 @@ function drawWires() {
   });
 }
 
+const drawInk = () => ink.replaceChildren(...state.ink.map(k => svg('polyline', { points: k.join(' ') })));
+
+// Distance from point p to the segment from (ax, ay) to (bx, by).
+function segDist(p, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const t = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.y - ay) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(p.x - ax - t * dx, p.y - ay - t * dy);
+}
+function touches(k, p, r) {
+  for (let i = 0; i + 3 < k.length; i += 2) if (segDist(p, k[i], k[i + 1], k[i + 2], k[i + 3]) < r) return true;
+  return false;
+}
+
 // Adds a box of `kind` at diagram point (x, y), named after its kind ("NewAbstractClass", "Cache"), with the name
 // selected and one empty row in each section. A Box starts 320 x 200 with nothing to type; Text starts in its first line.
 function addClass({ x, y }, kind) {
@@ -513,12 +536,38 @@ board.addEventListener('keydown', e => {
 // ---- Moving boxes and drawing arrows ----
 // Left-drag on a box, outside its text boxes, moves it. Right-drag from one box onto another draws an arrow, and
 // right-drag on empty canvas pans it. A right-click without moving opens the menu instead.
+// A pen's tip draws ink anywhere, even over boxes. Holding either barrel button (the eraser, button 5, or the
+// right-click one, button 2) wipes out every stroke the pen touches. A finger drag on empty canvas pans, and two
+// fingers pinch to zoom and pan together.
 let skipMenu = false; // set by a right-drag, so the contextmenu event that follows its release opens nothing
+const fingers = new Map(); // pointerId → [clientX, clientY] of each finger on the board
+// The midpoint of the first two fingers and the distance between them.
+function span() {
+  const [[ax, ay], [bx, by]] = fingers.values();
+  return { mid: [(ax + bx) / 2, (ay + by) / 2], dist: Math.hypot(bx - ax, by - ay) || 1 };
+}
 board.addEventListener('pointerdown', e => {
   skipMenu = false;
+  if (e.pointerType === 'touch') {
+    fingers.set(e.pointerId, [e.clientX, e.clientY]);
+    // A second finger turns whatever the first one started (a pan or a box move) into a pinch.
+    if (fingers.size >= 2) return void (drag = { pinch: true, ...span() });
+  }
+  if (e.pointerType === 'pen') {
+    e.preventDefault(); // keeps the pen from focusing a text box under it
+    if (e.button !== 0) drag = { erase: true };
+    else {
+      const p = pt(e), k = [p.x, p.y, p.x, p.y]; // a repeated point, so a tap still draws a dot
+      state.ink.push(k);
+      drag = { ink: k, line: svg('polyline', { points: k.join(' ') }) };
+      ink.append(drag.line);
+    }
+    return;
+  }
   const box = e.target.closest('.box');
   if (!box) {
     if (e.button === 2) drag = { pan: true, right: true, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, moved: false };
+    else if (e.pointerType === 'touch') drag = { pan: true, x: e.clientX, y: e.clientY };
     return;
   }
   const c = byId(box.dataset.id), p = pt(e), r = box.getBoundingClientRect();
@@ -554,8 +603,17 @@ window.addEventListener('pointerdown', e => {
 });
 
 window.addEventListener('pointermove', e => {
+  if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
   if (!drag) return;
   if (!e.buttons) return endDrag(e); // the button was released where no pointerup reached the page
+  // A pinch zooms by how much the fingers spread, about their midpoint, and pans as the midpoint moves.
+  if (drag.pinch) {
+    const { mid, dist } = span(), r = board.getBoundingClientRect();
+    zoom(view.z * dist / drag.dist, drag.mid[0] - r.left, drag.mid[1] - r.top);
+    pan(mid[0] - drag.mid[0], mid[1] - drag.mid[1]);
+    Object.assign(drag, { mid, dist });
+    return;
+  }
   if (drag.pan) {
     // A right-button pan starts once the mouse has moved 5px, then catches up to the cursor.
     if (drag.right && !drag.moved) {
@@ -566,6 +624,18 @@ window.addEventListener('pointermove', e => {
     pan(e.clientX - drag.x, e.clientY - drag.y);
     drag.x = e.clientX;
     drag.y = e.clientY;
+    return;
+  }
+  // A pen reports more points than pointermove fires; the coalesced events keep fast strokes smooth.
+  if (drag.ink || drag.erase) {
+    const k = drag.ink, n = state.ink.length, evs = e.getCoalescedEvents?.();
+    for (const ev of evs?.length ? evs : [e]) {
+      const p = pt(ev);
+      if (k && Math.hypot(p.x - k.at(-2), p.y - k.at(-1)) >= 2) k.push(p.x, p.y);
+      if (drag.erase) state.ink = state.ink.filter(s => !touches(s, p, 10 / view.z));
+    }
+    if (k) drag.line.setAttribute('points', k.join(' '));
+    else if (state.ink.length !== n) drawInk();
     return;
   }
   const p = pt(e);
@@ -585,7 +655,8 @@ window.addEventListener('pointermove', e => {
 });
 
 function endDrag(e) {
-  if (drag.moved) skipMenu = true; // only right-button drags set `moved`
+  // Only right-button drags set `moved`. Windows turns a pen held still into a right-click, which a stroke must not open.
+  if (drag.moved || drag.ink || drag.erase) skipMenu = true;
   if (drag.from && drag.moved) {
     temp.setAttribute('d', '');
     const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.box');
@@ -600,7 +671,12 @@ function endDrag(e) {
   drawWires();
 }
 // A pointerup without a drag may end a Box resize; commit() records it, and does nothing when nothing changed.
-window.addEventListener('pointerup', e => { if (drag) endDrag(e); else commit(); });
+// Lifting either finger ends a pinch, and the finger left on the screen does nothing until it is lifted too.
+window.addEventListener('pointerup', e => {
+  fingers.delete(e.pointerId);
+  if (drag) endDrag(e); else commit();
+});
+window.addEventListener('pointercancel', e => fingers.delete(e.pointerId));
 
 // Double-clicking a title bar edits the class name.
 // Double-clicking a title bar edits the name, and double-clicking a Text line edits that line.
@@ -639,7 +715,7 @@ function openMenu(e, items) {
 }
 
 board.addEventListener('contextmenu', e => {
-  if (skipMenu) { skipMenu = false; return e.preventDefault(); }
+  if (skipMenu || drag?.ink || drag?.erase) { skipMenu = false; return e.preventDefault(); }
   const box = e.target.closest('.box'), g = e.target.closest('g[data-i]');
   if (box) {
     const c = byId(box.dataset.id);
@@ -667,7 +743,7 @@ board.addEventListener('contextmenu', e => {
     openMenu(e, ['Add', ...Object.entries(M.kinds).flatMap(([k, [, name, shape]], i, all) => [
       ...(shape && !all[i - 1][1][2] ? [null] : []),
       [name, () => addClass(p, k), false, badge(k)],
-    ])]);
+    ]), ...(state.ink.length ? [null, ['Clear ink', () => { state.ink = []; }, false, TRASH]] : [])]);
   }
 });
 
@@ -743,7 +819,8 @@ $('export').onclick = () => {
       a.click();
     }, true],
   ]);
-  $('json').value = JSON.stringify({ mode, ...state }, null, 2);
+  // A diagram without ink leaves `ink` out, so it exports exactly as before pens were supported.
+  $('json').value = JSON.stringify({ mode, ...state, ink: state.ink.length ? state.ink : undefined }, null, 2);
 };
 
 // Import replaces the diagram with pasted JSON or a chosen file. Ctrl+Z restores the previous diagram.
@@ -779,7 +856,7 @@ function loadDiagram(text) {
   render();
 }
 
-$('clear').onclick = () => ask('Clear the diagram?', '<p>This deletes every box and arrow.</p>', [
+$('clear').onclick = () => ask('Clear the diagram?', '<p>This deletes every box, arrow and pen stroke.</p>', [
   ['Cancel'],
   ['Clear', () => { state = blank(); commit(); render(); }, true],
 ]);
