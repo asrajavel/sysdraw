@@ -12,10 +12,12 @@
   body { margin: 0; overflow: hidden; font-family: system-ui, sans-serif; background: #fafafa; user-select: none; }
   /* Fixed, not sticky, so panning sideways never moves it; the board starts below its 48px height. */
   header { position: fixed; top: 0; left: 0; right: 0; height: 48px; box-sizing: border-box; z-index: 10; display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #ddd; }
-  /* The LLD / HLD switch: two joined buttons, the current mode filled in. */
-  #mode { display: flex; margin-right: 6px; border: 1.5px solid #333; border-radius: 4px; overflow: hidden; }
+  /* The DSA / LLD / HLD switch: two joined buttons, the current mode filled in. */
+  #mode { display: flex; flex: none; margin-right: 6px; border: 1.5px solid #333; border-radius: 4px; overflow: hidden; }
   #mode button { border: 0; border-radius: 0; box-shadow: none; transform: none; padding: 4px 10px; font-weight: 600; }
   #mode button.on { background: #333; color: #fff; }
+  /* Export, Import and Clear sit at the right end of the bar, away from the mode switch. */
+  #export { margin-left: auto; }
   /* Toolbar buttons share the class boxes' border, corners and shadow. */
   header button, dialog button { font: 14px system-ui, sans-serif; padding: 4px 12px; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; cursor: pointer; white-space: nowrap; }
   header button:hover, dialog button:hover { background: #eef4ff; }
@@ -61,6 +63,10 @@
   /* Pen ink sits above the boxes, but clicks pass through it to them. */
   #ink { position: absolute; left: 0; top: 0; z-index: 1; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
   #ink polyline { fill: none; stroke: #1971c2; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  /* While the pen is the latest pointer, text boxes ignore it, so writing over a cell never focuses it, and the whole
+     board shows a crosshair instead of the typing or move cursor. */
+  body.pen .box input { pointer-events: none; }
+  body.pen #board, body.pen #board * { cursor: crosshair !important; }
   /* Selected boxes get a blue outline, and a selected Box frame a blue border, since its clip-path hides an outline.
      Arrows between two selected boxes turn blue, and selected strokes thicken. */
   .box.sel { outline: 2px solid #2563eb; outline-offset: 2px; }
@@ -140,6 +146,25 @@
   .box .name { flex: 1; min-width: 0; padding: 0 4px; text-align: center; font: bold 15px system-ui, sans-serif; pointer-events: none; }
   .box .name:focus { pointer-events: auto; }
 
+  /* DSA: bare arrays of cells with grey index numbers, and nodes as circles, sized to read on a shared screen. */
+  /* max-content lets a box grow with its text; #world has no width, so a box would otherwise shrink to its narrowest. */
+  body[data-mode="dsa"] .box { width: max-content; min-width: 0; padding: 4px; border: 0; background: none; box-shadow: none; }
+  body[data-mode="dsa"] .box input { font: 18px Consolas, monospace; text-align: center; }
+  .cells { display: grid; }
+  .cells .idx { padding: 0 6px 2px; font: 12px system-ui, sans-serif; color: #888; text-align: center; align-self: center; }
+  /* Each cell draws only its right and bottom lines, plus its top line in the first row and its left line in the first
+     column, so every line is drawn once. Overlapping full borders showed doubled lines beside a column of fractional
+     width, since the browser rounds each cell to whole pixels on its own. */
+  .cells input { box-sizing: border-box; width: 100%; min-width: 40px; height: 40px; padding: 0 6px; border: 0 solid #333; border-width: 0 1.5px 1.5px 0; background: #fff; }
+  .cells input.top { border-top-width: 1.5px; }
+  .cells input.left { border-left-width: 1.5px; }
+  /* A node grows into a bigger circle for a long value, and is edited after a double-click so a drag moves it. */
+  body[data-mode="dsa"] .box[data-kind$="node"] { display: grid; place-items: center; box-sizing: border-box; min-width: 48px; aspect-ratio: 1; padding: 0;
+    border: 1.5px solid #333; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px #0002; }
+  body[data-mode="dsa"] .box[data-kind$="node"]:focus-within { border-color: #2563eb; }
+  .box[data-kind$="node"] input { min-width: 0; padding: 0 6px; background: none !important; }
+  .box[data-kind$="node"] input:not(:focus) { pointer-events: none; }
+
   #menu { position: fixed; z-index: 20; display: flex; flex-direction: column; min-width: 180px; padding: 4px; background: #fff; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 6px 16px #0002; font: 14px system-ui, sans-serif; }
   #menu[hidden] { display: none; }
   /* Each item: an icon column (kind badge, trash can, or empty), the label, and a ✓ at the right when selected. */
@@ -156,8 +181,7 @@
 </head>
 <body>
 <header>
-  <div id="mode"><button data-mode="lld">LLD</button><button data-mode="hld">HLD</button></div>
-  <button id="add"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg><span></span></button>
+  <div id="mode"><button data-mode="dsa">DSA</button><button data-mode="lld">LLD</button><button data-mode="hld">HLD</button></div>
   <button id="export"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Export</button>
   <button id="import"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>Import</button>
   <button id="clear"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Clear</button>
@@ -192,15 +216,16 @@ const icon = paths => `<svg viewBox="0 0 24 24">${paths}</svg>`;
 // Hand-drawn HLD component icons: shapes outlined in `line` over a pale `fill` of the same colour. Parts marked
 // fill="#fff" stay white.
 const pic = (fill, line, paths) => `<svg class="pic" viewBox="0 0 64 64" style="--f:${fill};--c:${line}">${paths}</svg>`;
-// Each mode has its own box kinds ([badge, name, shape]), arrow types, row sections ([key, tag letter, placeholder])
-// and storage key. A kind with a `shape` is drawn differently from a normal box: 'frame' is a resizable empty border,
-// 'text' is plain lines of text, and 'window' is a heading bar over lines of text. `add` is the kind the toolbar button inserts; `link(a, b)` picks the arrow type for a right-drag from
-// a box of kind `a` to one of kind `b`, and the arrow's right-click menu can change it.
+// Each mode has its own box kinds ([badge, name, shape, size]), arrow types, row sections ([key, tag letter,
+// placeholder]) and storage key. A kind with a `shape` is drawn differently from a normal box: 'frame' is a resizable
+// empty border, 'text' is plain lines of text, 'window' is a heading bar over lines of text, 'node' is one value in a
+// circle, and 'cells' is an array of cells that starts `size` [columns, rows] big. `link(a, b)` picks the arrow type for a right-drag from a box of kind `a` to one of kind `b`, and the
+// arrow's right-click menu can change it. `typeNames` writes each arrow's type on it.
 const MODES = {
   lld: {
-    key: 'uml-tool', add: 'class', hint: 'Right-click to add a class',
+    key: 'uml-tool', hint: 'Right-click to add a class',
     kinds: { class: ['C', 'Class'], abstract: ['A', 'Abstract Class'], interface: ['I', 'Interface'], enum: ['E', 'Enum'], record: ['R', 'Record'] },
-    types: ['extends', 'implements', 'has-a'],
+    types: ['extends', 'implements', 'has-a'], typeNames: true,
     sections: [['fields', 'f', 'field'], ['methods', 'm', 'method()']],
     // The "New" prefix keeps an unrenamed box from clashing with Java's own Class, Enum and Record.
     newName: name => 'New' + name.replace(/ /g, ''),
@@ -211,7 +236,7 @@ const MODES = {
     },
   },
   hld: {
-    key: 'hld-tool', add: 'service', hint: 'Right-click to add a component',
+    key: 'hld-tool', hint: 'Right-click to add a component',
     kinds: {
       client: [pic('#e0f2fe', '#0ea5e9', '<rect x="5" y="11" width="40" height="28" rx="3"/><path d="M25 39v8M17 48h16"/><rect x="43" y="25" width="16" height="28" rx="3"/><path d="M49 48h4"/>'), 'Client'],
       service: [pic('#dbeafe', '#3b82f6', '<rect x="9" y="8" width="46" height="14" rx="3"/><rect x="9" y="25" width="46" height="14" rx="3"/><rect x="9" y="42" width="46" height="14" rx="3"/><path d="M16 15h.01M16 32h.01M16 49h.01M38 15h10M38 32h10M38 49h10"/>'), 'Service'],
@@ -229,6 +254,20 @@ const MODES = {
     sections: [['notes', '', 'note']],
     newName: name => name,
     link: () => 'sync',
+  },
+  // A 1D array is a 2D array with one row, so a right-drag down turns one into the other. An array stores its cells
+  // row by row in `cells`, with `cols` cells to a row.
+  dsa: {
+    key: 'dsa-tool', hint: 'Right-click to add an array or a node',
+    kinds: {
+      array: [icon('<rect x="2" y="8" width="20" height="8" rx="1"/><path d="M9 8v8M15 8v8"/>'), '1D Array', 'cells', [5, 1]],
+      grid: [icon('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>'), '2D Array', 'cells', [4, 3]],
+      node: [icon('<circle cx="5" cy="12" r="3"/><circle cx="19" cy="12" r="3"/><path d="M8 12h8m-3-3 3 3-3 3"/>'), 'Directed Node', 'node'],
+      unode: [icon('<circle cx="5" cy="12" r="3"/><circle cx="19" cy="12" r="3"/><path d="M8 12h8"/>'), 'Undirected Node', 'node'],
+    },
+    types: ['directed', 'undirected'],
+    sections: [['cells', '', '']],
+    link: a => a === 'unode' ? 'undirected' : 'directed',
   },
 };
 // Multiplicity choices for a has-a arrow: [menu label, label at the arrow's tail, label at its head].
@@ -262,14 +301,19 @@ function parseDiagram(text, m = mode) {
       s.classes.every(c => c && typeof c.id === 'string' && /^[\w-]+$/.test(c.id) && !ids.has(c.id) && ids.add(c.id) &&
         Object.hasOwn(kinds, c.kind) && typeof c.name === 'string' && Number.isFinite(c.x) && Number.isFinite(c.y) &&
         [c.w, c.h].every(n => n === undefined || Number.isFinite(n)) &&
-        sections.every(([sec]) => Array.isArray(c[sec]) && c[sec].every(t => typeof t === 'string'))) &&
+        (c.cols === undefined || Number.isInteger(c.cols) && c.cols > 0 && c.cells?.length > 0 && c.cells.length % c.cols === 0) &&
+        sections.every(([sec]) => Array.isArray(c[sec]) && c[sec].every(t => typeof t === 'string' || Number.isFinite(t)))) &&
       s.links.every(l => l && ids.has(l.from) && ids.has(l.to) && l.from !== l.to && types.includes(l.type) &&
         [l.fromLabel, l.toLabel].every(t => t === undefined || typeof t === 'string')) &&
       (s.ink === undefined || Array.isArray(s.ink) &&
         s.ink.every(k => Array.isArray(k) && k.length >= 4 && k.length % 2 === 0 && k.every(Number.isFinite)));
     if (!ok) return null;
     s.ink ??= [];
-    for (const c of s.classes) for (const [sec] of sections) if (!c[sec].length) c[sec].push('');
+    // Hand-written arrays often hold numbers, such as "cells": [3, 1, 4]; every row and cell is kept as text.
+    for (const c of s.classes) for (const [sec] of sections) {
+      c[sec] = c[sec].map(String);
+      if (!c[sec].length) c[sec].push('');
+    }
     delete s.mode;
     return s;
   } catch { return null; }
@@ -327,7 +371,6 @@ function setMode(m) {
   view = { x: 0, y: 0, z: 1 };
   try { view = { ...view, ...JSON.parse(localStorage.getItem(M.key + '-view')) }; } catch {}
   document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
-  $('add').querySelector('span').textContent = M.kinds[M.add][1];
   $('hint').textContent = M.hint;
   menu.hidden = true;
   pan(0, 0);
@@ -377,6 +420,7 @@ function boxEl(c) {
   Object.assign(el.dataset, { id: c.id, kind: c.kind });
   el.style.left = c.x + 'px';
   el.style.top = c.y + 'px';
+  if (shape === 'node' || shape === 'cells') return dsaEl(el, c, shape);
   // A Box is only a border, Text has no title, and Text with Heading has a title without an icon.
   const head = shape === 'frame' || shape === 'text' ? ''
     : `<div class="head">${shape ? '' : `<span class="badge ${c.kind}">${badgeHtml}</span>`}<input class="name"></div>`;
@@ -404,16 +448,44 @@ function boxEl(c) {
   return el;
 }
 
+// A node is one text box in a circle. An array is a grid of cells with the column numbers above it and, once it has a
+// second row, the row numbers to its left.
+function dsaEl(el, c, shape) {
+  const cell = i => {
+    const inp = document.createElement('input');
+    inp.value = c.cells[i];
+    Object.assign(inp.dataset, { sec: 'cells', i });
+    return inp;
+  };
+  if (shape === 'node') return el.appendChild(cell(0)), el;
+  const cols = c.cols ?? c.cells.length, rows = c.cells.length / cols, grid = document.createElement('div');
+  const idx = t => Object.assign(document.createElement('span'), { className: 'idx', textContent: t });
+  grid.className = 'cells';
+  grid.style.gridTemplateColumns = (rows > 1 ? 'auto ' : '') + `repeat(${cols}, auto)`;
+  if (rows > 1) grid.append(idx(''));
+  for (let k = 0; k < cols; k++) grid.append(idx(k));
+  for (let r = 0; r < rows; r++) {
+    if (rows > 1) grid.append(idx(r));
+    for (let k = 0; k < cols; k++) grid.append(Object.assign(cell(r * cols + k), { className: (r ? '' : 'top ') + (k ? '' : 'left') }));
+  }
+  el.append(grid);
+  return el;
+}
+
 function rect(id) {
   const el = boxOf(id);
   if (!el) return null;
   const x = el.offsetLeft, y = el.offsetTop, w = el.offsetWidth, h = el.offsetHeight;
-  return { x, y, w, h, cx: x + w / 2, cy: y + h / 2 };
+  return { x, y, w, h, cx: x + w / 2, cy: y + h / 2, round: M.kinds[el.dataset.kind][2] === 'node' };
 }
 
-// The point where the line from the centre of `r` toward (tx, ty) leaves the box border.
+// The point where the line from the centre of `r` toward (tx, ty) leaves the box border, or a node's circle.
 function edge(r, tx, ty) {
   const dx = tx - r.cx, dy = ty - r.cy;
+  if (r.round) {
+    const len = Math.hypot(dx, dy) || 1;
+    return [r.cx + dx / len * r.w / 2, r.cy + dy / len * r.h / 2];
+  }
   const s = Math.min(Math.abs(r.w / 2 / dx), Math.abs(r.h / 2 / dy));
   return isFinite(s) ? [r.cx + dx * s, r.cy + dy * s] : [r.cx, r.cy];
 }
@@ -441,10 +513,9 @@ function drawWires() {
     const d = `M${x1},${y1}L${x2},${y2}`;
     const g = svg('g', { 'data-i': i, class: sel.has(l.from) && sel.has(l.to) ? 'sel' : '' });
     const inherits = l.type === 'extends' || l.type === 'implements';
-    g.append(svg('path', { d, class: `line ${l.type}`, 'marker-end': `url(#${inherits ? 'tri' : 'open'})` }),
-             svg('path', { d, class: 'hit' }));
-    // A mode with one arrow type (HLD) needs no name on its arrows.
-    if (M.types.length > 1) {
+    const head = l.type === 'undirected' ? 'none' : `url(#${inherits ? 'tri' : 'open'})`;
+    g.append(svg('path', { d, class: `line ${l.type}`, 'marker-end': head }), svg('path', { d, class: 'hit' }));
+    if (M.typeNames) {
       const t = svg('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 + 4, class: 'type', 'text-anchor': 'middle' });
       t.textContent = l.type;
       g.append(t);
@@ -478,16 +549,18 @@ function touches(k, p, r) {
 const newId = () => Math.random().toString(36).slice(2, 9);
 
 // Adds a box of `kind` at diagram point (x, y), named after its kind ("NewAbstractClass", "Cache"), with the name
-// selected and one empty row in each section. A Box starts 320 x 200 with nothing to type; Text starts in its first line.
+// selected and one empty row in each section. A Box starts 320 x 200 with nothing to type; Text, a node and an array
+// start in their first line or cell.
 function addClass({ x, y }, kind) {
-  const [, label, shape] = M.kinds[kind];
+  const [, label, shape, size] = M.kinds[kind];
   const name = shape === 'window' ? 'Heading' : shape ? '' : M.newName(label);
   const c = { id: newId(), kind, name, x, y };
   for (const [sec] of M.sections) c[sec] = [''];
   if (shape === 'frame') Object.assign(c, { w: 320, h: 200 });
+  if (size) Object.assign(c, { cols: size[0], cells: Array(size[0] * size[1]).fill('') });
   state.classes.push(c);
   commit();
-  render(shape === 'text' ? rowSel(c.id, M.sections[0][0], 0) : `.box[data-id="${c.id}"] .name`, true);
+  render(['text', 'node', 'cells'].includes(shape) ? rowSel(c.id, M.sections[0][0], 0) : `.box[data-id="${c.id}"] .name`, true);
 }
 
 // ---- Editing text ----
@@ -519,7 +592,12 @@ board.addEventListener('change', e => {
 board.addEventListener('keydown', e => {
   const inp = e.target;
   if (inp.tagName !== 'INPUT') return;
-  const box = inp.closest('.box'), c = byId(box.dataset.id);
+  const box = inp.closest('.box'), c = byId(box.dataset.id), shape = M.kinds[c.kind][2];
+  if (shape === 'node') {
+    if (e.key === 'Enter') inp.blur();
+    return;
+  }
+  if (shape === 'cells') return cellKey(e, c);
   const all = [...box.querySelectorAll('input')], k = all.indexOf(inp);
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
@@ -552,6 +630,30 @@ board.addEventListener('keydown', e => {
     render(rowSel(c.id, sec, Math.max(i - 1, 0)));
   }
 });
+
+// In an array, Tab and Shift+Tab step through the cells row by row, the arrow keys move between neighbouring cells
+// (left and right once the caret reaches the end of the text), and Enter moves down. Tab from the last cell adds a
+// cell to a one-row array, or a row to a taller one. Each cell reached has its text selected, so typing replaces it.
+function cellKey(e, c) {
+  const inp = e.target, i = +inp.dataset.i, cols = c.cols ?? c.cells.length, n = c.cells.length;
+  const j = e.key === 'Tab' ? i + (e.shiftKey ? -1 : 1)
+    : e.key === 'ArrowLeft' && inp.selectionStart === 0 ? i - 1
+    : e.key === 'ArrowRight' && inp.selectionEnd === inp.value.length ? i + 1
+    : e.key === 'ArrowUp' ? i - cols
+    : e.key === 'ArrowDown' || e.key === 'Enter' ? i + cols : null;
+  if (j === null) return;
+  e.preventDefault();
+  if (e.key === 'Tab' && j === n) {
+    c.cols = n === cols ? cols + 1 : cols;
+    c.cells.push(...Array(n === cols ? 1 : cols).fill(''));
+    commit();
+    return render(rowSel(c.id, 'cells', j));
+  }
+  if (e.key === 'Enter' && j >= n) return inp.blur();
+  const f = board.querySelector(rowSel(c.id, 'cells', j));
+  f?.focus();
+  f?.select();
+}
 
 // ---- Selecting, copying and pasting ----
 // `sel` holds the ids of the selected boxes and `selInk` the selected pen strokes; an arrow counts as selected when
@@ -678,7 +780,12 @@ board.addEventListener('pointerdown', e => {
   // The bottom-right corner of a Box is the browser's resize grip, so a drag there resizes instead of moving.
   const g = 16 * view.z; // the grip's size on screen
   const onGrip = box.dataset.kind === 'group' && e.clientX > r.right - g && e.clientY > r.bottom - g;
-  if (e.button === 2) drag = { from: c, x: e.clientX, y: e.clientY, moved: false };
+  if (e.button === 2 && M.kinds[c.kind][2] === 'cells') {
+    // Right-dragging an array resizes it by whole cells, measured by its last cell. `cells` keeps what it held, so
+    // cells dragged away and back get their values back.
+    const cols = c.cols ?? c.cells.length, last = box.querySelector('.cells input:last-child');
+    drag = { grow: c, p, x: e.clientX, y: e.clientY, moved: false, cols, rows: c.cells.length / cols, cells: [...c.cells], w: last.offsetWidth, h: last.offsetHeight };
+  } else if (e.button === 2) drag = { from: c, x: e.clientX, y: e.clientY, moved: false };
   else if (e.button === 0 && e.target.tagName !== 'INPUT' && !onGrip) {
     e.preventDefault();
     document.activeElement.blur(); // so Delete and Ctrl+C reach the selection, not a text box still being edited
@@ -705,12 +812,22 @@ window.addEventListener('wheel', e => {
   const sideways = e.shiftKey && !e.deltaX;
   pan(-(sideways ? e.deltaY : e.deltaX), sideways ? 0 : -e.deltaY);
 }, { passive: false });
+// Focusing a text box past the board's edge scrolls the board to show it, even with overflow hidden. That scroll is
+// turned into a pan, so the view, the dot grid and the saved offset stay in step.
+board.addEventListener('scroll', () => {
+  pan(-board.scrollLeft, -board.scrollTop);
+  board.scrollTo(0, 0);
+});
 window.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); }); // stops the browser's autoscroll
 window.addEventListener('pointerdown', e => {
   if (e.button !== 1) return;
   drag = { pan: true, x: e.clientX, y: e.clientY };
   document.body.classList.add('panning');
 });
+
+// A pen hovers before it touches, so `pen` is set before its tip lands on a text box. pointerover also arrives before a
+// finger tap's pointerdown, so a tap after the pen has left reaches text boxes again.
+for (const t of ['pointerover', 'pointermove']) window.addEventListener(t, e => document.body.classList.toggle('pen', e.pointerType === 'pen'), true);
 
 window.addEventListener('pointermove', e => {
   if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
@@ -782,6 +899,17 @@ window.addEventListener('pointermove', e => {
     }
     selInk = new Set([...drag.selInk, ...state.ink.filter(k => inside(...bounds(k)))]);
     showSel();
+  } else if (drag.grow) {
+    drag.moved ||= Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4;
+    const c = drag.grow, cols = Math.max(1, drag.cols + Math.round((p.x - drag.p.x) / drag.w));
+    const rows = Math.max(1, drag.rows + Math.round((p.y - drag.p.y) / drag.h));
+    if (cols === c.cols && cols * rows === c.cells.length) return;
+    c.cols = cols;
+    c.cells = Array.from({ length: cols * rows }, (_, i) => {
+      const r = Math.floor(i / cols), k = i % cols;
+      return r < drag.rows && k < drag.cols ? drag.cells[r * drag.cols + k] : '';
+    });
+    render();
   } else {
     // A right-drag counts once the mouse has moved 5px, so a plain right-click still opens the menu.
     drag.moved ||= Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4;
@@ -793,13 +921,22 @@ window.addEventListener('pointermove', e => {
 function endDrag(e) {
   // Only right-button drags set `moved`. Windows turns a pen held still into a right-click, which a stroke must not open.
   if (drag.moved || drag.ink || drag.erase) skipMenu = true;
+  let made;
   if (drag.from && drag.moved) {
     temp.setAttribute('d', '');
     const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.box');
     const a = drag.from, b = target && byId(target.dataset.id);
-    // A second arrow from a to b would hide exactly under the first, so it is not added; b to a still is.
-    const dup = b && state.links.some(l => l.from === a.id && l.to === b.id);
+    // A second arrow from a to b would hide exactly under the first, so it is not added; b to a still is, unless an
+    // undirected line already joins them.
+    const dup = b && state.links.some(l => l.from === a.id && l.to === b.id || l.type === 'undirected' && l.from === b.id && l.to === a.id);
     if (b && b !== a && !dup) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind) });
+    // A right-drag from a node to empty canvas drops a new node of the same kind there, joined to it and ready to type into.
+    else if (!target && M.kinds[a.kind][2] === 'node') {
+      const p = pt(e);
+      made = { id: newId(), kind: a.kind, name: '', x: p.x - 24, y: p.y - 24, cells: [''] };
+      state.classes.push(made);
+      state.links.push({ from: a.id, to: made.id, type: M.link(a.kind, a.kind) });
+    }
   }
   if (drag.only) {
     sel = new Set([drag.only]);
@@ -810,7 +947,7 @@ function endDrag(e) {
   drag = null;
   document.body.classList.remove('panning');
   commit();
-  drawWires();
+  made ? render(rowSel(made.id, 'cells', 0)) : drawWires();
 }
 // A pointerup without a drag may end a Box resize; commit() records it, and does nothing when nothing changed.
 // Lifting either finger ends a pinch, and the finger left on the screen does nothing until it is lifted too.
@@ -820,11 +957,14 @@ window.addEventListener('pointerup', e => {
 });
 window.addEventListener('pointercancel', e => fingers.delete(e.pointerId));
 
-// Double-clicking a title bar edits the class name.
-// Double-clicking a title bar edits the name, and double-clicking a Text line edits that line.
+// Double-clicking a title bar edits the name, double-clicking a Text line edits that line, and double-clicking a node
+// edits its value. An array's cells ignore the mouse while several items are selected, so the cell under the pointer
+// is found by its position.
 board.addEventListener('dblclick', e => {
   if (e.target.tagName === 'INPUT') return;
-  const n = e.target.closest('.head, .item')?.querySelector('input');
+  const inCell = i => { const r = i.getBoundingClientRect(); return e.clientX >= r.left && e.clientX < r.right && e.clientY >= r.top && e.clientY < r.bottom; };
+  const n = e.target.closest('.cells') ? [...e.target.closest('.cells').querySelectorAll('input')].find(inCell)
+    : e.target.closest('.head, .item, .box[data-kind$="node"]')?.querySelector('input');
   if (n) { n.focus(); n.select(); }
 });
 
@@ -883,7 +1023,7 @@ board.addEventListener('contextmenu', e => {
     const p = pt(e);
     // A divider separates the components from Box, Text and Text with Heading.
     openMenu(e, ['Add', ...Object.entries(M.kinds).flatMap(([k, [, name, shape]], i, all) => [
-      ...(shape && !all[i - 1][1][2] ? [null] : []),
+      ...(i && shape && !all[i - 1][1][2] ? [null] : []),
       [name, () => addClass(p, k), false, badge(k)],
     ]), ...(state.ink.length ? [null, ['Clear ink', () => { state.ink = []; }, false, TRASH]] : [])]);
   }
@@ -917,11 +1057,6 @@ document.addEventListener('keydown', e => {
 });
 
 // ---- Toolbar ----
-// Place the new box near the top-left of the visible part of the canvas, staggered so boxes don't stack exactly.
-$('add').onclick = () => {
-  const step = (state.classes.length % 5) * 30;
-  addClass({ x: Math.round((40 - view.x) / view.z) + step, y: Math.round((40 - view.y) / view.z) + step }, M.add);
-};
 // Plus and minus step 10 percentage points from the nearest multiple of 10%, so a wheel zoom such as 93% steps to 100%.
 $('zoom-in').onclick = () => zoom(Math.round(view.z * 10) / 10 + 0.1);
 $('zoom-out').onclick = () => zoom(Math.round(view.z * 10) / 10 - 0.1);
@@ -990,7 +1125,7 @@ function loadDiagram(text) {
   let m;
   try { m = JSON.parse(text).mode; } catch {}
   // Without a mode (older exports, hand-written JSON), use whichever mode the diagram fits.
-  m ??= ['lld', 'hld'].find(k => parseDiagram(text, k));
+  m ??= Object.keys(MODES).find(k => parseDiagram(text, k));
   const s = Object.hasOwn(MODES, m) && parseDiagram(text, m);
   if (!s) {
     $('err').textContent = 'This is not a diagram saved by this tool.';

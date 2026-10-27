@@ -4,6 +4,7 @@ A small diagram editor for system design interviews and screen-sharing. Open it 
 
 - **HLD mode** draws system components (client, service, database, cache, load balancer, queue, object storage, CDN) joined by arrows, plus boxes and text for grouping and notes.
 - **LLD mode** draws UML class diagrams: classes, interfaces, enums and records with fields and methods, joined by extends, implements and has-a arrows.
+- **DSA mode** is a scratch pad for coding rounds: 1D and 2D arrays with index numbers, and nodes for linked lists, trees and graphs. Right-drag from a node to empty canvas grows a new node joined to it; right-drag an array right or down to add columns or rows, and back to remove them. Tab moves through the cells and adds one past the end.
 
 It is one HTML file with no dependencies and no server. Your diagrams are saved in your own browser and never leave it.
 
@@ -11,7 +12,7 @@ It is one HTML file with no dependencies and no server. Your diagrams are saved 
 
 | To | Do this |
 |---|---|
-| Add a box | Right-click the canvas, or use the toolbar's add button |
+| Add a box | Right-click the canvas |
 | Connect two boxes | Right-drag from one box onto another |
 | Change or delete a box or arrow | Right-click it |
 | Move a box | Drag it; dragging a selected box moves the whole selection |
