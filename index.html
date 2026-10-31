@@ -65,7 +65,7 @@
   #ink polyline { fill: none; stroke: #1971c2; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
   /* While the pen is the latest pointer, text boxes ignore it, so writing over a cell never focuses it, and the whole
      board shows a crosshair instead of the typing or move cursor. */
-  body.pen .box input { pointer-events: none; }
+  body.pen .box :is(input, textarea) { pointer-events: none; }
   body.pen #board, body.pen #board * { cursor: crosshair !important; }
   /* Selected boxes get a blue outline, and a selected Box frame a blue border, since its clip-path hides an outline.
      Arrows between two selected boxes turn blue, and selected strokes thicken. */
@@ -74,7 +74,7 @@
   g.sel .line { stroke: #2563eb; }
   /* While several items are selected, their rows ignore the mouse, so the whole box shows the move cursor and drags
      the selection; a double-click still edits a row. */
-  body.multi .box.sel input:not(:focus) { pointer-events: none; }
+  body.multi .box.sel :is(input, textarea):not(:focus) { pointer-events: none; }
   #ink polyline.sel { stroke-width: 5; stroke-opacity: .5; }
   /* The rectangle a left-drag on empty canvas draws to select what lies wholly inside it. It sits on the board in
      screen pixels rather than in the scaled #world, where its moving edges could leave stale lines on screen. */
@@ -94,11 +94,13 @@
   .badge svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
   .badge svg.pic { fill: var(--f); stroke: var(--c); stroke-width: 2.4; }
   .sec { padding: 3px 0; border-top: 1.5px solid #333; }
-  .box input { display: block; box-sizing: border-box; min-width: 100%; field-sizing: content; border: 0; outline: 0; background: transparent; padding: 2px 10px; font: 14px Consolas, monospace; cursor: text; }
-  /* Each field or method row: a small f or m tag, then the text box. */
-  .item { display: flex; align-items: center; gap: 6px; padding-left: 8px; }
-  .item input { flex: 1; min-width: 0; padding-left: 0; }
-  .tag { flex: none; width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center; font: bold 10px system-ui, sans-serif; }
+  .box :is(input, textarea) { display: block; box-sizing: border-box; min-width: 100%; field-sizing: content; border: 0; outline: 0; background: transparent; padding: 2px 10px; font: 14px Consolas, monospace; cursor: text; }
+  /* A textarea breaks lines only where the text does, so a box grows with its longest line as it does with an input. */
+  .box textarea { resize: none; overflow: hidden; white-space: pre; }
+  /* Each field or method row: a small f or m tag, then the text box. The tag stays beside the row's first line. */
+  .item { display: flex; align-items: flex-start; gap: 6px; padding-left: 8px; }
+  .item textarea { flex: 1; min-width: 0; padding-left: 0; }
+  .tag { flex: none; width: 15px; height: 15px; margin-top: 3px; border-radius: 50%; display: grid; place-items: center; font: bold 10px system-ui, sans-serif; }
   /* Centre each letter's visible shape, not its line box: trim the text to cap height ("C", "f") or, for the short
      "m", to x-height. Browsers without text-box support fall back to centring the line box. */
   .badge, .tag { text-box: trim-both cap alphabetic; }
@@ -107,7 +109,7 @@
   .tag.fields { background: #fde8d4; color: #b4561c; }
   .tag.methods { background: #f6dbe8; color: #a3376b; }
   /* An empty row hides its tag until it is focused, so an empty section stays blank. */
-  .item:has(input:placeholder-shown:not(:focus)) .tag { visibility: hidden; }
+  .item:has(textarea:placeholder-shown:not(:focus)) .tag { visibility: hidden; }
   /* HLD components look like a book's system diagram: a large icon with the name and any notes in small text below
      it, on a white card. */
   body[data-mode="hld"] .box { min-width: 96px; box-sizing: border-box; padding: 10px 12px 8px; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 1px 4px #0001; }
@@ -116,9 +118,9 @@
   body[data-mode="hld"] .box .name { flex: none; padding: 0 2px; font: 600 13px system-ui, sans-serif; }
   body[data-mode="hld"] .sec { border: 0; padding: 0; }
   body[data-mode="hld"] .item { padding: 0; }
-  body[data-mode="hld"] .item input { padding: 0 2px; text-align: center; font: 12px system-ui, sans-serif; color: #555; }
+  body[data-mode="hld"] .item textarea { padding: 0 2px; text-align: center; font: 12px system-ui, sans-serif; color: #555; }
   /* A component without notes shows no notes rows. The empty row stays focusable, so Enter in the name opens it. */
-  body[data-mode="hld"] .box[data-kind]:not([data-kind="text"], [data-kind="titled"]) .sec:not(:has(input:focus, input:not(:placeholder-shown))) { height: 0; overflow: hidden; }
+  body[data-mode="hld"] .box[data-kind]:not([data-kind="text"], [data-kind="titled"]) .sec:not(:has(textarea:focus, textarea:not(:placeholder-shown))) { height: 0; overflow: hidden; }
 
   /* Box: an empty frame for grouping part of the diagram. It sits behind arrows and components, and clip-path keeps
      only a 12px band along its edge clickable, so clicks inside reach the canvas. Drag it by that band and resize it
@@ -129,19 +131,19 @@
   /* Text: plain lines on a white patch with no border, so the dot grid does not run through the words. A drag
      anywhere moves it, so the lines are edited after a double-click. */
   body[data-mode="hld"] .box[data-kind="text"] { min-width: 0; padding: 2px; border: 0; border-radius: 4px; background: #fff; box-shadow: none; }
-  body[data-mode="hld"] .box[data-kind="text"] input:not(:focus) { pointer-events: none; }
+  body[data-mode="hld"] .box[data-kind="text"] textarea:not(:focus) { pointer-events: none; }
   /* Text with Heading: a card with a left-aligned heading in a grey bar above the lines. */
   body[data-mode="hld"] .box[data-kind="titled"] { min-width: 180px; padding: 0; border: 1.5px solid #c4cad2; border-radius: 8px; overflow: hidden; }
   body[data-mode="hld"] .box[data-kind="titled"] .head { flex-direction: row; gap: 10px; padding: 6px 10px; background: #f1f3f5; border-bottom: 1px solid #dde1e5; }
   body[data-mode="hld"] .box[data-kind="titled"] .name { flex: 1; text-align: left; }
   body[data-mode="hld"] .box[data-kind="titled"] .sec { padding: 6px 0; }
-  body[data-mode="hld"] .box[data-kind="text"] .item input, body[data-mode="hld"] .box[data-kind="titled"] .item input { padding: 1px 10px; text-align: left; font: 13px system-ui, sans-serif; color: #333; }
-  body[data-mode="hld"] .box[data-kind="text"] .item input { padding: 1px 4px; font-size: 14px; }
+  body[data-mode="hld"] .box[data-kind="text"] .item textarea, body[data-mode="hld"] .box[data-kind="titled"] .item textarea { padding: 1px 10px; text-align: left; font: 13px system-ui, sans-serif; color: #333; }
+  body[data-mode="hld"] .box[data-kind="text"] .item textarea { padding: 1px 4px; font-size: 14px; }
   /* Empty lines in Text show as blank lines, but a Text whose only line is empty shows a grey "text", so it does not vanish. */
-  body[data-mode="hld"] .box[data-kind="text"] .item:only-child input::placeholder { color: #aaa; }
-  .box input:focus { background: #eef4ff; }
-  .box input::placeholder { color: transparent; }
-  .box input:focus::placeholder { color: #aaa; }
+  body[data-mode="hld"] .box[data-kind="text"] .item:only-child textarea::placeholder { color: #aaa; }
+  .box :is(input, textarea):focus { background: #eef4ff; }
+  .box :is(input, textarea)::placeholder { color: transparent; }
+  .box :is(input, textarea):focus::placeholder { color: #aaa; }
   /* The name is edited after a double-click, so a plain drag on the title bar moves the box. */
   .box .name { flex: 1; min-width: 0; padding: 0 4px; text-align: center; font: bold 15px system-ui, sans-serif; pointer-events: none; }
   .box .name:focus { pointer-events: auto; }
@@ -330,7 +332,7 @@ function commit() {
 }
 const byId = id => state.classes.find(c => c.id === id);
 const boxOf = id => board.querySelector(`.box[data-id="${id}"]`);
-const rowSel = (id, sec, i) => `.box[data-id="${id}"] input[data-sec="${sec}"][data-i="${i}"]`;
+const rowSel = (id, sec, i) => `.box[data-id="${id}"] [data-sec="${sec}"][data-i="${i}"]`;
 // Diagram coordinates of a mouse event, rounded to whole pixels so saved positions stay short. #world's corner is the
 // diagram origin wherever the pan has moved it, and the zoom scales every distance from it.
 const pt = e => {
@@ -385,12 +387,17 @@ function svg(tag, attrs) {
 
 // Rebuild every box from `state`, then focus the input matching `focus` (select its text when `select` is set).
 // With no `focus`, the input that had focus gets it back, with the same text selected, if it still exists.
+// `rebuilding` is true while the old boxes are removed: removing an edited text box fires `change` with its old text
+// and index, which must not be written back over `state`.
+let rebuilding = false;
 function render(focus, select) {
   const a = document.activeElement, box = a?.closest('.box');
   const keep = !focus && box && [a.classList.contains('name') ? `.box[data-id="${box.dataset.id}"] .name`
     : rowSel(box.dataset.id, a.dataset.sec, a.dataset.i), a.selectionStart, a.selectionEnd];
   sizer.disconnect();
+  rebuilding = true;
   board.querySelectorAll('.box').forEach(b => b.remove());
+  rebuilding = false;
   for (const c of state.classes) world.append(boxEl(c));
   $('hint').hidden = state.classes.length > 0;
   pruneSel();
@@ -413,6 +420,9 @@ const sizer = new ResizeObserver(entries => {
   }
   drawWires();
 });
+
+// A textarea's `rows`, which sets its height in browsers without `field-sizing`.
+const lineCount = t => t.split('\n').length;
 
 function boxEl(c) {
   const el = document.createElement('div'), [badgeHtml, , shape] = M.kinds[c.kind];
@@ -439,8 +449,8 @@ function boxEl(c) {
       const item = document.createElement('div');
       item.className = 'item';
       if (tag) item.innerHTML = `<span class="tag ${sec}">${tag}</span>`;
-      const inp = document.createElement('input');
-      Object.assign(inp, { value: text, placeholder: shape ? 'text' : sec === 'fields' && c.kind === 'enum' ? 'CONSTANT' : hint });
+      const inp = document.createElement('textarea');
+      Object.assign(inp, { rows: lineCount(text), value: text, placeholder: shape ? 'text' : sec === 'fields' && c.kind === 'enum' ? 'CONSTANT' : hint });
       Object.assign(inp.dataset, { sec, i });
       item.append(inp);
       secs[s].append(item);
@@ -567,19 +577,25 @@ function addClass({ x, y }, kind) {
 board.addEventListener('input', e => {
   const inp = e.target, c = byId(inp.closest('.box').dataset.id);
   if (inp.classList.contains('name')) c.name = inp.value;
-  else c[inp.dataset.sec][+inp.dataset.i] = inp.value;
+  else {
+    c[inp.dataset.sec][+inp.dataset.i] = inp.value;
+    inp.rows = lineCount(inp.value);
+  }
   persist();
   drawWires();
 });
-// A method row typed without brackets gets () after its name: "park" → "park()", "park: void" → "park(): void".
+// A method row typed without brackets gets () after its name: "park" → "park()", "park: void" → "park(): void". Only
+// the first line is the signature; any lines after it are hints.
 function withParens(t) {
-  if (!t.trim() || t.includes('(')) return t;
-  const k = t.indexOf(':');
-  return k < 0 ? t.trimEnd() + '()' : t.slice(0, k).trimEnd() + '()' + t.slice(k);
+  const [head, ...hints] = t.split('\n');
+  if (!head.trim() || head.includes('(')) return t;
+  const k = head.indexOf(':');
+  return [k < 0 ? head.trimEnd() + '()' : head.slice(0, k).trimEnd() + '()' + head.slice(k), ...hints].join('\n');
 }
 
 // `change` fires when a text box loses focus after an edit.
 board.addEventListener('change', e => {
+  if (rebuilding) return;
   const inp = e.target;
   if (inp.dataset.sec === 'methods') {
     inp.value = withParens(inp.value);
@@ -591,15 +607,17 @@ board.addEventListener('change', e => {
 
 board.addEventListener('keydown', e => {
   const inp = e.target;
-  if (inp.tagName !== 'INPUT') return;
+  if (!inp.matches('input, textarea')) return;
   const box = inp.closest('.box'), c = byId(box.dataset.id), shape = M.kinds[c.kind][2];
   if (shape === 'node') {
     if (e.key === 'Enter') inp.blur();
     return;
   }
   if (shape === 'cells') return cellKey(e, c);
-  const all = [...box.querySelectorAll('input')], k = all.indexOf(inp);
+  const all = [...box.querySelectorAll('input, textarea')], k = all.indexOf(inp);
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    // Inside a multi-line row, the arrows move between its lines and leave the row only from its first or last line.
+    if ((e.key === 'ArrowDown' ? inp.value.slice(inp.selectionEnd) : inp.value.slice(0, inp.selectionStart)).includes('\n')) return;
     e.preventDefault();
     all[k + (e.key === 'ArrowDown' ? 1 : -1)]?.focus();
     return;
@@ -608,7 +626,8 @@ board.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); all[1].focus(); }
     return;
   }
-  // A row is one field or method; each section always keeps at least one row so it can be typed into.
+  // A row is one field, method or note; each section always keeps at least one row so it can be typed into. Shift+Enter
+  // is left to the textarea, which breaks the line within the row.
   const sec = inp.dataset.sec, i = +inp.dataset.i, rows = c[sec];
   // In a method, typing ( adds the closing ) too, and typing ) just before an existing ) steps over it.
   if (sec === 'methods' && (e.key === '(' || (e.key === ')' && inp.value[inp.selectionStart] === ')'))) {
@@ -617,7 +636,7 @@ board.addEventListener('keydown', e => {
     if (e.key === '(') inp.setRangeText('()', at, inp.selectionEnd);
     inp.setSelectionRange(at + 1, at + 1);
     inp.dispatchEvent(new Event('input', { bubbles: true }));
-  } else if (e.key === 'Enter') {
+  } else if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     if (sec === 'methods') rows[i] = withParens(rows[i]);
     rows.splice(i + 1, 0, '');
@@ -786,7 +805,7 @@ board.addEventListener('pointerdown', e => {
     const cols = c.cols ?? c.cells.length, last = box.querySelector('.cells input:last-child');
     drag = { grow: c, p, x: e.clientX, y: e.clientY, moved: false, cols, rows: c.cells.length / cols, cells: [...c.cells], w: last.offsetWidth, h: last.offsetHeight };
   } else if (e.button === 2) drag = { from: c, x: e.clientX, y: e.clientY, moved: false };
-  else if (e.button === 0 && e.target.tagName !== 'INPUT' && !onGrip) {
+  else if (e.button === 0 && !e.target.matches('input, textarea') && !onGrip) {
     e.preventDefault();
     document.activeElement.blur(); // so Delete and Ctrl+C reach the selection, not a text box still being edited
     if (e.shiftKey) sel.has(c.id) ? sel.delete(c.id) : sel.add(c.id);
@@ -961,10 +980,10 @@ window.addEventListener('pointercancel', e => fingers.delete(e.pointerId));
 // edits its value. An array's cells ignore the mouse while several items are selected, so the cell under the pointer
 // is found by its position.
 board.addEventListener('dblclick', e => {
-  if (e.target.tagName === 'INPUT') return;
+  if (e.target.matches('input, textarea')) return;
   const inCell = i => { const r = i.getBoundingClientRect(); return e.clientX >= r.left && e.clientX < r.right && e.clientY >= r.top && e.clientY < r.bottom; };
   const n = e.target.closest('.cells') ? [...e.target.closest('.cells').querySelectorAll('input')].find(inCell)
-    : e.target.closest('.head, .item, .box[data-kind$="node"]')?.querySelector('input');
+    : e.target.closest('.head, .item, .box[data-kind$="node"]')?.querySelector('input, textarea');
   if (n) { n.focus(); n.select(); }
 });
 
