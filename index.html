@@ -55,6 +55,8 @@
   .line { stroke: #333; stroke-width: 1.5; fill: none; }
   .implements { stroke-dasharray: 6 4; }
   .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: context-menu; }
+  /* An arrow's labels answer the mouse as the arrow does. */
+  .type, .mult { pointer-events: auto; cursor: context-menu; user-select: none; }
   g:hover .line { stroke: #2563eb; }
   .mult { font: 14px Consolas, monospace; }
   /* The type name sits on the middle of its arrow; the halo in the board's colour breaks the line behind it. */
@@ -97,10 +99,13 @@
   .box :is(input, textarea) { display: block; box-sizing: border-box; min-width: 100%; field-sizing: content; border: 0; outline: 0; background: transparent; padding: 2px 10px; font: 14px Consolas, monospace; cursor: text; }
   /* A textarea breaks lines only where the text does, so a box grows with its longest line as it does with an input. */
   .box textarea { resize: none; overflow: hidden; white-space: pre; }
-  /* Each field or method row: a small f or m tag, then the text box. The tag stays beside the row's first line. */
+  /* Each field or method row: a small f or m tag, then the text box. The tag stays beside the row's first line, and
+     dragging it reorders the row within its section. */
   .item { display: flex; align-items: flex-start; gap: 6px; padding-left: 8px; }
+  /* Marks where a dragged row will land. It has no height, so showing it never shifts the rows. */
+  .drop { height: 0; margin: 0 6px; outline: 1px solid #2563eb; }
   .item textarea { flex: 1; min-width: 0; padding-left: 0; }
-  .tag { flex: none; width: 15px; height: 15px; margin-top: 3px; border-radius: 50%; display: grid; place-items: center; font: bold 10px system-ui, sans-serif; }
+  .tag { flex: none; width: 15px; height: 15px; margin-top: 3px; border-radius: 50%; display: grid; place-items: center; font: bold 10px system-ui, sans-serif; cursor: grab; }
   /* Centre each letter's visible shape, not its line box: trim the text to cap height ("C", "f") or, for the short
      "m", to x-height. Browsers without text-box support fall back to centring the line box. */
   .badge, .tag { text-box: trim-both cap alphabetic; }
@@ -753,12 +758,13 @@ document.addEventListener('keydown', e => {
 // Left-drag on a box, outside its text boxes, moves it along with the rest of the selection; clicking a box that is
 // not selected selects only it, and Shift+click adds or removes it. A mouse left-drag on empty canvas selects what
 // lies wholly inside its rectangle. Right-drag from one box onto another draws an arrow, and right-drag on empty
-// canvas pans it. A right-click without moving opens the menu instead.
+// canvas pans it. A right-click without moving opens the menu instead. Left-drag on a row's f or m tag reorders that row.
 // A pen's tip draws ink anywhere, even over boxes. Holding either barrel button (the eraser, button 5, or the
 // right-click one, button 2) wipes out every stroke the pen touches. A finger drag on empty canvas pans, and two
 // fingers pinch to zoom and pan together.
 let skipMenu = false; // set by a right-drag, so the contextmenu event that follows its release opens nothing
 const fingers = new Map(); // pointerId → [clientX, clientY] of each finger on the board
+const drop = Object.assign(document.createElement('div'), { className: 'drop' }); // the line showing where a dragged row lands
 // The midpoint of the first two fingers and the distance between them.
 function span() {
   const [[ax, ay], [bx, by]] = fingers.values();
@@ -799,7 +805,13 @@ board.addEventListener('pointerdown', e => {
   // The bottom-right corner of a Box is the browser's resize grip, so a drag there resizes instead of moving.
   const g = 16 * view.z; // the grip's size on screen
   const onGrip = box.dataset.kind === 'group' && e.clientX > r.right - g && e.clientY > r.bottom - g;
-  if (e.button === 2 && M.kinds[c.kind][2] === 'cells') {
+  if (e.button === 0 && e.target.matches('.tag')) {
+    e.preventDefault();
+    document.activeElement.blur(); // the render after the drop restores focus by row number, which would then be another row
+    const inp = e.target.parentNode.querySelector('textarea'), sec = inp.dataset.sec;
+    drag = { row: c, sec, i: +inp.dataset.i, items: [...e.target.closest('.sec').children] };
+    document.body.classList.add('panning');
+  } else if (e.button === 2 && M.kinds[c.kind][2] === 'cells') {
     // Right-dragging an array resizes it by whole cells, measured by its last cell. `cells` keeps what it held, so
     // cells dragged away and back get their values back.
     const cols = c.cols ?? c.cells.length, last = box.querySelector('.cells input:last-child');
@@ -918,6 +930,10 @@ window.addEventListener('pointermove', e => {
     }
     selInk = new Set([...drag.selInk, ...state.ink.filter(k => inside(...bounds(k)))]);
     showSel();
+  } else if (drag.row) {
+    // `to` is the number of rows whose middle lies above the cursor, which is the gap the dragged row would drop into.
+    drag.to = drag.items.filter(it => { const r = it.getBoundingClientRect(); return e.clientY > r.top + r.height / 2; }).length;
+    drag.items[0].parentNode.insertBefore(drop, drag.items[drag.to] ?? null);
   } else if (drag.grow) {
     drag.moved ||= Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4;
     const c = drag.grow, cols = Math.max(1, drag.cols + Math.round((p.x - drag.p.x) / drag.w));
@@ -962,11 +978,18 @@ function endDrag(e) {
     selInk.clear();
     showSel();
   }
+  const { row, sec, i, to = i } = drag;
+  if (row) {
+    drop.remove();
+    // Taking the row out first shifts every later gap up by one.
+    const [text] = row[sec].splice(i, 1);
+    row[sec].splice(to > i ? to - 1 : to, 0, text);
+  }
   $('band').hidden = true;
   drag = null;
   document.body.classList.remove('panning');
   commit();
-  made ? render(rowSel(made.id, 'cells', 0)) : drawWires();
+  made ? render(rowSel(made.id, 'cells', 0)) : row ? render() : drawWires();
 }
 // A pointerup without a drag may end a Box resize; commit() records it, and does nothing when nothing changed.
 // Lifting either finger ends a pinch, and the finger left on the screen does nothing until it is lifted too.
@@ -1065,6 +1088,7 @@ document.addEventListener('keydown', e => {
     // the restored strokes are new arrays, so they could not stay selected the way boxes would.
     menu.hidden = true;
     drag = null;
+    drop.remove();
     sel.clear();
     selInk.clear();
     $('band').hidden = true;

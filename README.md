@@ -19,6 +19,7 @@ It is one HTML file with no dependencies and no server. Your diagrams are saved 
 | Select several | Drag a rectangle on empty canvas, Shift+click to add or remove a box, or Ctrl+A for everything; Escape clears it |
 | Copy, paste or delete the selection | Ctrl+C, then Ctrl+V pastes a copy beside it with its arrows and strokes; Delete removes it |
 | Edit a name or line | Double-click it; Enter adds a line, Backspace on an empty line removes it. Shift+Enter breaks the line inside the same row, for a calculation in HLD or a hint under an LLD field or method |
+| Reorder a field or method | Drag the f or m tag at the start of its row |
 | Pan | Scroll, Shift+scroll sideways, or drag with the middle or right button or a finger on empty canvas |
 | Scribble | Draw with a pen; hold either button on its side to rub out strokes, or right-click the canvas and choose Clear ink |
 | Zoom | Ctrl+scroll (Cmd+scroll on a Mac), a two-finger pinch, or the − and + in the bottom-left corner; click the percentage for 100% |
