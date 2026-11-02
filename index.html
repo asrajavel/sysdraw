@@ -61,6 +61,8 @@
   .mult { font: 14px Consolas, monospace; }
   /* The type name sits on the middle of its arrow; the halo in the board's colour breaks the line behind it. */
   .type { font: 12px system-ui, sans-serif; fill: #666; stroke: #fafafa; stroke-width: 4px; paint-order: stroke; }
+  /* An HLD arrow's label is usually a step number, so it is larger and darker to read on a shared screen. */
+  .type.label { font: bold 15px system-ui, sans-serif; fill: #1e40af; }
   #temp { stroke: #2563eb; stroke-width: 1.5; stroke-dasharray: 4 3; }
   /* Pen ink sits above the boxes, but clicks pass through it to them. */
   #ink { position: absolute; left: 0; top: 0; z-index: 1; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
@@ -184,6 +186,7 @@
   #menu .badge svg.pic { width: 20px; height: 20px; stroke-width: 4; }
   #menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid #eee; }
   #menu .title { padding: 4px 8px 2px; font-size: 12px; color: #888; }
+  #menu input { margin: 2px; padding: 4px 6px; font: inherit; border: 1px solid #ddd; border-radius: 5px; outline-color: #2563eb; }
 </style>
 </head>
 <body>
@@ -227,7 +230,8 @@ const pic = (fill, line, paths) => `<svg class="pic" viewBox="0 0 64 64" style="
 // placeholder]) and storage key. A kind with a `shape` is drawn differently from a normal box: 'frame' is a resizable
 // empty border, 'text' is plain lines of text, 'window' is a heading bar over lines of text, 'node' is one value in a
 // circle, and 'cells' is an array of cells that starts `size` [columns, rows] big. `link(a, b)` picks the arrow type for a right-drag from a box of kind `a` to one of kind `b`, and the
-// arrow's right-click menu can change it. `typeNames` writes each arrow's type on it.
+// arrow's right-click menu can change it. `typeNames` writes each arrow's type on it, and `arrowLabels` lets that menu
+// write a short `label` on it.
 const MODES = {
   lld: {
     key: 'uml-tool', hint: 'Right-click to add a class',
@@ -257,7 +261,7 @@ const MODES = {
       text: [icon('<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>'), 'Text', 'text'],
       titled: [icon('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/>'), 'Text with Heading', 'window'],
     },
-    types: ['sync'],
+    types: ['sync'], arrowLabels: true,
     sections: [['notes', '', 'note']],
     newName: name => name,
     link: () => 'sync',
@@ -311,7 +315,7 @@ function parseDiagram(text, m = mode) {
         (c.cols === undefined || Number.isInteger(c.cols) && c.cols > 0 && c.cells?.length > 0 && c.cells.length % c.cols === 0) &&
         sections.every(([sec]) => Array.isArray(c[sec]) && c[sec].every(t => typeof t === 'string' || Number.isFinite(t)))) &&
       s.links.every(l => l && ids.has(l.from) && ids.has(l.to) && l.from !== l.to && types.includes(l.type) &&
-        [l.fromLabel, l.toLabel].every(t => t === undefined || typeof t === 'string')) &&
+        [l.fromLabel, l.toLabel, l.label].every(t => t === undefined || typeof t === 'string')) &&
       (s.ink === undefined || Array.isArray(s.ink) &&
         s.ink.every(k => Array.isArray(k) && k.length >= 4 && k.length % 2 === 0 && k.every(Number.isFinite)));
     if (!ok) return null;
@@ -533,6 +537,11 @@ function drawWires() {
     if (M.typeNames) {
       const t = svg('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 + 4, class: 'type', 'text-anchor': 'middle' });
       t.textContent = l.type;
+      g.append(t);
+    }
+    if (M.arrowLabels && l.label) {
+      const t = svg('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 + 5, class: 'type label', 'text-anchor': 'middle' });
+      t.textContent = l.label;
       g.append(t);
     }
     if (l.type === 'has-a') {
@@ -992,10 +1001,11 @@ function endDrag(e) {
   made ? render(rowSel(made.id, 'cells', 0)) : row ? render() : drawWires();
 }
 // A pointerup without a drag may end a Box resize; commit() records it, and does nothing when nothing changed.
-// Lifting either finger ends a pinch, and the finger left on the screen does nothing until it is lifted too.
+// Lifting either finger ends a pinch, and the finger left on the screen does nothing until it is lifted too. A click
+// inside the menu commits nothing, so it cannot save a label that is still being typed.
 window.addEventListener('pointerup', e => {
   fingers.delete(e.pointerId);
-  if (drag) endDrag(e); else commit();
+  if (drag) endDrag(e); else if (!menu.contains(e.target)) commit();
 });
 window.addEventListener('pointercancel', e => fingers.delete(e.pointerId));
 
@@ -1014,11 +1024,27 @@ board.addEventListener('dblclick', e => {
 const badge = k => `<span class="badge ${k}">${M.kinds[k][0]}</span>`;
 const TRASH = '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
 
-// Each item is [label, onClick, isSelected, iconHtml]; null draws a divider and a string draws a small heading.
+// The text box at the top of an arrow's menu. Each keystroke redraws the label. Enter or leaving the box commits it,
+// and Escape puts back the label the arrow had when the menu opened.
+function labelInput(l) {
+  const old = l.label, set = t => { l.label = t || undefined; persist(); drawWires(); };
+  const inp = Object.assign(document.createElement('input'), { value: old ?? '', placeholder: 'Label, e.g. 1 or A' });
+  inp.oninput = () => set(inp.value.trim());
+  inp.onblur = commit;
+  inp.onkeydown = e => {
+    if (e.key === 'Escape') set(old);
+    if (e.key === 'Enter' || e.key === 'Escape') { inp.blur(); menu.hidden = true; }
+  };
+  return inp;
+}
+
+// Each item is [label, onClick, isSelected, iconHtml]; null draws a divider, a string draws a small heading, and an
+// element is shown as it is.
 function openMenu(e, items) {
   e.preventDefault();
   menu.replaceChildren(...items.map(item => {
     if (!item) return document.createElement('hr');
+    if (item instanceof Element) return item;
     if (typeof item === 'string') {
       const t = document.createElement('div');
       t.className = 'title';
@@ -1054,13 +1080,15 @@ board.addEventListener('contextmenu', e => {
       }, false, TRASH],
     ]);
   } else if (g) {
-    const i = +g.dataset.i, l = state.links[i];
+    const i = +g.dataset.i, l = state.links[i], inp = M.arrowLabels && labelInput(l);
     openMenu(e, [
+      ...(inp ? [inp, null] : []),
       ...(M.types.length > 1 ? [...M.types.map(t => [t[0].toUpperCase() + t.slice(1), () => { l.type = t; }, l.type === t]), null] : []),
       ...(l.type === 'has-a' ? [...MULTS.map(([name, from, to]) =>
         [name, () => { l.fromLabel = from; l.toLabel = to; }, l.fromLabel === from && l.toLabel === to]), null] : []),
       ['Delete', () => { state.links.splice(i, 1); }, false, TRASH],
     ]);
+    if (inp) { inp.focus(); inp.select(); }
   } else {
     const p = pt(e);
     // A divider separates the components from Box, Text and Text with Heading.

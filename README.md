@@ -15,6 +15,7 @@ It is one HTML file with no dependencies and no server. Your diagrams are saved 
 | Add a box | Right-click the canvas |
 | Connect two boxes | Right-drag from one box onto another |
 | Change or delete a box or arrow | Right-click it |
+| Label an HLD arrow | Right-click it, type a number or letter, and press Enter; the label moves with the arrow |
 | Move a box | Drag it; dragging a selected box moves the whole selection |
 | Select several | Drag a rectangle on empty canvas, Shift+click to add or remove a box, or Ctrl+A for everything; Escape clears it |
 | Copy, paste or delete the selection | Ctrl+C, then Ctrl+V pastes a copy beside it with its arrows and strokes; Delete removes it |
