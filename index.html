@@ -253,7 +253,6 @@ const MODES = {
     // The "New" prefix keeps an unrenamed box from clashing with Java's own Class, Enum and Record.
     newName: name => 'New' + name.replace(/ /g, ''),
     link(a, b) {
-      if (Object.hasOwn(EXTRAS, a) || Object.hasOwn(EXTRAS, b)) return 'has-a';
       if (b === 'interface') return a === 'interface' ? 'extends' : 'implements';
       const isClass = k => k === 'class' || k === 'abstract';
       return isClass(a) && isClass(b) ? 'extends' : 'has-a';
