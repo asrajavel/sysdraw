@@ -74,7 +74,7 @@
   /* Selected boxes get a blue outline, and a selected Box frame a blue border, since its clip-path hides an outline.
      Arrows between two selected boxes turn blue, and selected strokes thicken. */
   .box.sel { outline: 2px solid #2563eb; outline-offset: 2px; }
-  body[data-mode="hld"] .box.sel[data-kind="group"] { border-color: #2563eb; }
+  body[data-mode] .box.sel[data-kind="group"] { border-color: #2563eb; }
   g.sel .line { stroke: #2563eb; }
   /* While several items are selected, their rows ignore the mouse, so the whole box shows the move cursor and drags
      the selection; a double-click still edits a row. */
@@ -129,25 +129,29 @@
   /* A component without notes shows no notes rows. The empty row stays focusable, so Enter in the name opens it. */
   body[data-mode="hld"] .box[data-kind]:not([data-kind="text"], [data-kind="titled"]) .sec:not(:has(textarea:focus, textarea:not(:placeholder-shown))) { height: 0; overflow: hidden; }
 
+  /* Box, Text and Text with Heading look the same in every mode, so these rules reset what each mode's own box,
+     section, row and name styles set. */
   /* Box: an empty frame for grouping part of the diagram. It sits behind arrows and components, and clip-path keeps
      only a 12px band along its edge clickable, so clicks inside reach the canvas. Drag it by that band and resize it
      with the browser's grip in the bottom-right corner. */
-  body[data-mode="hld"] .box[data-kind="group"] { z-index: -1; width: 320px; height: 200px; min-width: 60px; min-height: 40px; padding: 0;
+  body[data-mode] .box[data-kind="group"] { z-index: -1; box-sizing: border-box; width: 320px; height: 200px; min-width: 60px; min-height: 40px; padding: 0;
     border: 2.5px solid #aab2bc; border-radius: 10px; background: none; box-shadow: none; resize: both; overflow: hidden;
     clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, 12px 12px, 12px calc(100% - 12px), calc(100% - 12px) calc(100% - 12px), calc(100% - 12px) 12px, 12px 12px); }
   /* Text: plain lines on a white patch with no border, so the dot grid does not run through the words. A drag
      anywhere moves it, so the lines are edited after a double-click. */
-  body[data-mode="hld"] .box[data-kind="text"] { min-width: 0; padding: 2px; border: 0; border-radius: 4px; background: #fff; box-shadow: none; }
-  body[data-mode="hld"] .box[data-kind="text"] textarea:not(:focus) { pointer-events: none; }
+  body[data-mode] .box[data-kind="text"] { min-width: 0; padding: 2px; border: 0; border-radius: 4px; background: #fff; box-shadow: none; }
+  body[data-mode] .box[data-kind="text"] textarea:not(:focus) { pointer-events: none; }
   /* Text with Heading: a card with a left-aligned heading in a grey bar above the lines. */
-  body[data-mode="hld"] .box[data-kind="titled"] { min-width: 180px; padding: 0; border: 1.5px solid #c4cad2; border-radius: 8px; overflow: hidden; }
-  body[data-mode="hld"] .box[data-kind="titled"] .head { flex-direction: row; gap: 10px; padding: 6px 10px; background: #f1f3f5; border-bottom: 1px solid #dde1e5; }
-  body[data-mode="hld"] .box[data-kind="titled"] .name { flex: 1; text-align: left; }
-  body[data-mode="hld"] .box[data-kind="titled"] .sec { padding: 6px 0; }
-  body[data-mode="hld"] .box[data-kind="text"] .item textarea, body[data-mode="hld"] .box[data-kind="titled"] .item textarea { padding: 1px 10px; text-align: left; font: 13px system-ui, sans-serif; color: #333; }
-  body[data-mode="hld"] .box[data-kind="text"] .item textarea { padding: 1px 4px; font-size: 14px; }
+  body[data-mode] .box[data-kind="titled"] { box-sizing: border-box; min-width: 180px; padding: 0; border: 1.5px solid #c4cad2; border-radius: 8px; background: #fff; box-shadow: 0 1px 4px #0001; overflow: hidden; }
+  body[data-mode] .box[data-kind="titled"] .head { flex-direction: row; gap: 10px; padding: 6px 10px; background: #f1f3f5; border-bottom: 1px solid #dde1e5; }
+  body[data-mode] .box[data-kind="titled"] .name { flex: 1; padding: 0 2px; text-align: left; font: 600 13px system-ui, sans-serif; }
+  body[data-mode] .box:is([data-kind="text"], [data-kind="titled"]) .sec { padding: 0; border: 0; }
+  body[data-mode] .box[data-kind="titled"] .sec { padding: 6px 0; }
+  body[data-mode] .box:is([data-kind="text"], [data-kind="titled"]) .item { padding: 0; }
+  body[data-mode] .box:is([data-kind="text"], [data-kind="titled"]) .item textarea { padding: 1px 10px; text-align: left; font: 13px system-ui, sans-serif; color: #333; }
+  body[data-mode] .box[data-kind="text"] .item textarea { padding: 1px 4px; font-size: 14px; }
   /* Empty lines in Text show as blank lines, but a Text whose only line is empty shows a grey "text", so it does not vanish. */
-  body[data-mode="hld"] .box[data-kind="text"] .item:only-child textarea::placeholder { color: #aaa; }
+  body[data-mode] .box[data-kind="text"] .item:only-child textarea::placeholder { color: #aaa; }
   .box :is(input, textarea):focus { background: #eef4ff; }
   .box :is(input, textarea)::placeholder { color: transparent; }
   .box :is(input, textarea):focus::placeholder { color: #aaa; }
@@ -226,6 +230,14 @@ const icon = paths => `<svg viewBox="0 0 24 24">${paths}</svg>`;
 // Hand-drawn HLD component icons: shapes outlined in `line` over a pale `fill` of the same colour. Parts marked
 // fill="#fff" stay white.
 const pic = (fill, line, paths) => `<svg class="pic" viewBox="0 0 64 64" style="--f:${fill};--c:${line}">${paths}</svg>`;
+// Box, Text and Text with Heading, added to every mode's kinds after its own. Text and Text with Heading keep their
+// lines in `notes`, whatever the mode's own sections are, and a Box has no rows.
+const EXTRAS = {
+  group: [icon('<rect x="3" y="3" width="18" height="18" rx="2"/>'), 'Box', 'frame'],
+  text: [icon('<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>'), 'Text', 'text'],
+  titled: [icon('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/>'), 'Text with Heading', 'window'],
+};
+const NOTES = [['notes', '', 'note']];
 // Each mode has its own box kinds ([badge, name, shape, size]), arrow types, row sections ([key, tag letter,
 // placeholder]) and storage key. A kind with a `shape` is drawn differently from a normal box: 'frame' is a resizable
 // empty border, 'text' is plain lines of text, 'window' is a heading bar over lines of text, 'node' is one value in a
@@ -241,6 +253,7 @@ const MODES = {
     // The "New" prefix keeps an unrenamed box from clashing with Java's own Class, Enum and Record.
     newName: name => 'New' + name.replace(/ /g, ''),
     link(a, b) {
+      if (Object.hasOwn(EXTRAS, a) || Object.hasOwn(EXTRAS, b)) return 'has-a';
       if (b === 'interface') return a === 'interface' ? 'extends' : 'implements';
       const isClass = k => k === 'class' || k === 'abstract';
       return isClass(a) && isClass(b) ? 'extends' : 'has-a';
@@ -257,12 +270,9 @@ const MODES = {
       queue: [pic('#ffedd5', '#f97316', '<path d="M4 18h44l12 14-12 14H4z"/><rect x="10" y="25" width="15" height="14" rx="1.5" fill="#fff"/><rect x="30" y="25" width="15" height="14" rx="1.5" fill="#fff"/><path d="M10 26l7.5 6.5L25 26M30 26l7.5 6.5L45 26" fill="none"/>'), 'Queue'],
       storage: [pic('#ccfbf1', '#14b8a6', '<path d="M11 20Q32 -4 53 20" fill="none"/><path d="M9 22l8 30a15 4 0 0 0 30 0l8-30"/><ellipse cx="32" cy="22" rx="23" ry="6"/>'), 'Object Storage'],
       cdn: [pic('#fce7f3', '#ec4899', '<circle cx="32" cy="32" r="24"/><path d="M32 8a10 24 0 0 0 0 48 10 24 0 0 0 0-48M8 32h48M12 20h40M12 44h40" fill="none"/><circle cx="16" cy="18" r="4" fill="#fff"/><circle cx="50" cy="24" r="4" fill="#fff"/><circle cx="26" cy="52" r="4" fill="#fff"/>'), 'CDN'],
-      group: [icon('<rect x="3" y="3" width="18" height="18" rx="2"/>'), 'Box', 'frame'],
-      text: [icon('<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>'), 'Text', 'text'],
-      titled: [icon('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/>'), 'Text with Heading', 'window'],
     },
     types: ['sync'], arrowLabels: true,
-    sections: [['notes', '', 'note']],
+    sections: NOTES,
     newName: name => name,
     link: () => 'sync',
   },
@@ -281,6 +291,10 @@ const MODES = {
     link: a => a === 'unode' ? 'undirected' : 'directed',
   },
 };
+for (const m of Object.values(MODES)) Object.assign(m.kinds, EXTRAS);
+// The row sections a box of `kind` has in mode `m`: none for a Box, `notes` for Text and Text with Heading, and the
+// mode's own sections for every other kind.
+const secs = (kind, m = M) => ({ frame: [], text: NOTES, window: NOTES })[m.kinds[kind][2]] ?? m.sections;
 // Multiplicity choices for a has-a arrow: [menu label, label at the arrow's tail, label at its head].
 // They read along the arrow: on Order → Item, One-to-Many means one Order has many Items.
 const MULTS = [['None'], ['One-to-One', '1', '1'], ['One-to-Many', '1', '*'], ['Many-to-One', '*', '1'], ['Many-to-Many', '*', '*']];
@@ -307,13 +321,13 @@ function load() {
 // hand-written or AI-written, so every box and arrow is checked. Empty sections get one blank row to type into.
 function parseDiagram(text, m = mode) {
   try {
-    const s = JSON.parse(text), ids = new Set(), { kinds, types, sections } = MODES[m];
+    const s = JSON.parse(text), ids = new Set(), { kinds, types } = MODES[m];
     const ok = Array.isArray(s.classes) && Array.isArray(s.links) &&
       s.classes.every(c => c && typeof c.id === 'string' && /^[\w-]+$/.test(c.id) && !ids.has(c.id) && ids.add(c.id) &&
         Object.hasOwn(kinds, c.kind) && typeof c.name === 'string' && Number.isFinite(c.x) && Number.isFinite(c.y) &&
         [c.w, c.h].every(n => n === undefined || Number.isFinite(n)) &&
         (c.cols === undefined || Number.isInteger(c.cols) && c.cols > 0 && c.cells?.length > 0 && c.cells.length % c.cols === 0) &&
-        sections.every(([sec]) => Array.isArray(c[sec]) && c[sec].every(t => typeof t === 'string' || Number.isFinite(t)))) &&
+        secs(c.kind, MODES[m]).every(([sec]) => Array.isArray(c[sec]) && c[sec].every(t => typeof t === 'string' || Number.isFinite(t)))) &&
       s.links.every(l => l && ids.has(l.from) && ids.has(l.to) && l.from !== l.to && types.includes(l.type) &&
         [l.fromLabel, l.toLabel, l.label].every(t => t === undefined || typeof t === 'string')) &&
       (s.ink === undefined || Array.isArray(s.ink) &&
@@ -321,7 +335,7 @@ function parseDiagram(text, m = mode) {
     if (!ok) return null;
     s.ink ??= [];
     // Hand-written arrays often hold numbers, such as "cells": [3, 1, 4]; every row and cell is kept as text.
-    for (const c of s.classes) for (const [sec] of sections) {
+    for (const c of s.classes) for (const [sec] of secs(c.kind, MODES[m])) {
       c[sec] = c[sec].map(String);
       if (!c[sec].length) c[sec].push('');
     }
@@ -443,7 +457,7 @@ function boxEl(c) {
   // A Box is only a border, Text has no title, and Text with Heading has a title without an icon.
   const head = shape === 'frame' || shape === 'text' ? ''
     : `<div class="head">${shape ? '' : `<span class="badge ${c.kind}">${badgeHtml}</span>`}<input class="name"></div>`;
-  const sections = shape === 'frame' ? [] : M.sections;
+  const sections = secs(c.kind);
   el.innerHTML = head + sections.map(() => '<div class="sec"></div>').join('');
   const name = el.querySelector('.name');
   if (name) name.value = c.name;
@@ -452,7 +466,7 @@ function boxEl(c) {
     el.style.height = c.h + 'px';
     sizer.observe(el);
   }
-  const secs = el.querySelectorAll('.sec');
+  const secEls = el.querySelectorAll('.sec');
   sections.forEach(([sec, tag, hint], s) =>
     c[sec].forEach((text, i) => {
       const item = document.createElement('div');
@@ -462,7 +476,7 @@ function boxEl(c) {
       Object.assign(inp, { rows: lineCount(text), value: text, placeholder: shape ? 'text' : sec === 'fields' && c.kind === 'enum' ? 'CONSTANT' : hint });
       Object.assign(inp.dataset, { sec, i });
       item.append(inp);
-      secs[s].append(item);
+      secEls[s].append(item);
     }));
   return el;
 }
@@ -579,12 +593,12 @@ function addClass({ x, y }, kind) {
   const [, label, shape, size] = M.kinds[kind];
   const name = shape === 'window' ? 'Heading' : shape ? '' : M.newName(label);
   const c = { id: newId(), kind, name, x, y };
-  for (const [sec] of M.sections) c[sec] = [''];
+  for (const [sec] of secs(kind)) c[sec] = [''];
   if (shape === 'frame') Object.assign(c, { w: 320, h: 200 });
   if (size) Object.assign(c, { cols: size[0], cells: Array(size[0] * size[1]).fill('') });
   state.classes.push(c);
   commit();
-  render(['text', 'node', 'cells'].includes(shape) ? rowSel(c.id, M.sections[0][0], 0) : `.box[data-id="${c.id}"] .name`, true);
+  render(['text', 'node', 'cells'].includes(shape) ? rowSel(c.id, secs(kind)[0][0], 0) : `.box[data-id="${c.id}"] .name`, true);
 }
 
 // ---- Editing text ----
@@ -1091,9 +1105,9 @@ board.addEventListener('contextmenu', e => {
     if (inp) { inp.focus(); inp.select(); }
   } else {
     const p = pt(e);
-    // A divider separates the components from Box, Text and Text with Heading.
-    openMenu(e, ['Add', ...Object.entries(M.kinds).flatMap(([k, [, name, shape]], i, all) => [
-      ...(i && shape && !all[i - 1][1][2] ? [null] : []),
+    // A divider separates the mode's own kinds from Box, Text and Text with Heading.
+    openMenu(e, ['Add', ...Object.entries(M.kinds).flatMap(([k, [, name]]) => [
+      ...(k === 'group' ? [null] : []),
       [name, () => addClass(p, k), false, badge(k)],
     ]), ...(state.ink.length ? [null, ['Clear ink', () => { state.ink = []; }, false, TRASH]] : [])]);
   }
@@ -1195,8 +1209,9 @@ $('file').onchange = async () => {
 function loadDiagram(text) {
   let m;
   try { m = JSON.parse(text).mode; } catch {}
-  // Without a mode (older exports, hand-written JSON), use whichever mode the diagram fits.
-  m ??= Object.keys(MODES).find(k => parseDiagram(text, k));
+  // Without a mode (older exports, hand-written JSON), use whichever mode's own kinds the diagram uses. One with only
+  // Box, Text and Text with Heading fits every mode, so it stays in the current one.
+  m ??= Object.keys(MODES).find(k => parseDiagram(text, k)?.classes.some(c => !Object.hasOwn(EXTRAS, c.kind))) ?? mode;
   const s = Object.hasOwn(MODES, m) && parseDiagram(text, m);
   if (!s) {
     $('err').textContent = 'This is not a diagram saved by this tool.';
