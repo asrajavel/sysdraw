@@ -559,6 +559,15 @@ function step(label) {
   if (/^[A-Za-z]$/.test(w)) return ['A', w.toUpperCase().charCodeAt(0), String.fromCharCode(w.charCodeAt(0) + 1)];
 }
 
+// A new HLD arrow continues the latest arrow whose label starts a step, or is 1.
+function nextLabel() {
+  for (let i = state.links.length - 1; i >= 0; i--) {
+    const s = step(state.links[i].label);
+    if (s) return s[2];
+  }
+  return '1';
+}
+
 // Each series of HLD steps has its own colour, for its lines and labels: the one picked for it in the series key
 // (kept in `state.colours`), or by default numbers blue, letters green, and each prefix such as R or W one of the
 // rest. Arrows that are not steps are grey.
@@ -1048,15 +1057,6 @@ window.addEventListener('pointermove', e => {
     if (drag.moved && r) temp.setAttribute('d', `M${r.cx},${r.cy}L${p.x},${p.y}`);
   }
 });
-
-// A new HLD arrow continues the latest arrow whose label starts a step, or is 1.
-function nextLabel() {
-  for (let i = state.links.length - 1; i >= 0; i--) {
-    const s = step(state.links[i].label);
-    if (s) return s[2];
-  }
-  return '1';
-}
 
 function endDrag(e) {
   // Only right-button drags set `moved`. Windows turns a pen held still into a right-click, which a stroke must not open.
