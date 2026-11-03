@@ -559,13 +559,13 @@ function step(label) {
   if (/^[A-Za-z]$/.test(w)) return ['A', w.toUpperCase().charCodeAt(0), String.fromCharCode(w.charCodeAt(0) + 1)];
 }
 
-// A new HLD arrow continues the latest arrow whose label starts a step, or is 1.
-function nextLabel() {
-  for (let i = state.links.length - 1; i >= 0; i--) {
-    const s = step(state.links[i].label);
-    if (s) return s[2];
-  }
-  return '1';
+// A new HLD arrow from box `from` continues the series of the newest step arrow into `from`, after that series'
+// highest step, so it neither jumps to whichever series was drawn last nor repeats a label. With no step arrow into
+// `from`, it continues the series of the newest step arrow anywhere, or is 1.
+function nextLabel(from) {
+  const steps = state.links.map(l => [l, step(l.label)]).filter(([, s]) => s);
+  const into = steps.findLast(([l]) => l.to === from) ?? steps.at(-1);
+  return into ? steps.filter(([, s]) => s[0] === into[1][0]).reduce((a, b) => b[1][1] > a[1][1] ? b : a)[1][2] : '1';
 }
 
 // Each series of HLD steps has its own colour, for its lines and labels: the one picked for it in the series key
@@ -1072,7 +1072,7 @@ function endDrag(e) {
     // In LLD and DSA a second arrow from a to b adds nothing, so it is not added; b to a still is, unless an
     // undirected line already joins them.
     const dup = b && !M.arrowLabels && state.links.some(l => l.from === a.id && l.to === b.id || l.type === 'undirected' && l.from === b.id && l.to === a.id);
-    if (b && b !== a && !dup) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind), label: M.arrowLabels ? nextLabel() : undefined });
+    if (b && b !== a && !dup) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind), label: M.arrowLabels ? nextLabel(a.id) : undefined });
     // A right-drag from a node to empty canvas drops a new node of the same kind there, joined to it and ready to type into.
     else if (!target && M.kinds[a.kind][2] === 'node') {
       const p = pt(e);
