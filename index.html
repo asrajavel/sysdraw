@@ -543,15 +543,26 @@ function drawWires() {
   state.links.forEach((l, i) => {
     const a = rect(l.from), b = rect(l.to);
     if (!a || !b) return;
-    // When another arrow runs the other way between the same two boxes, each is drawn 8px to its own right, so the
-    // pair separates, and its type and label sit 14px further out on that side. (px, py) is the unit vector to the
-    // arrow's right on screen.
-    const back = state.links.some(o => o.from === l.to && o.to === l.from);
+    // All `n` arrows between the same two boxes, either way, are spread into parallel lanes 16px apart, centred on
+    // the line between the boxes, or closer together when the outer lanes would miss the smaller box. Lanes are
+    // counted across the line from its box with the smaller id (`lo`), so every arrow of the pair agrees on them;
+    // this arrow is number `k` and sits `lane` px from the centre line.
+    // (px, py) is the unit vector to this arrow's right on screen, and `side` is 1 when its lane is on that side.
+    const lo = l.from < l.to ? l.from : l.to, c = lo === l.from ? a : b, e = c === a ? b : a;
+    const group = state.links.filter(o => o.from === l.from && o.to === l.to || o.from === l.to && o.to === l.from);
+    const n = group.length, k = group.indexOf(l);
+    const gap = Math.min(16, Math.max(0, Math.min(a.w, a.h, b.w, b.h) - 8) / Math.max(1, n - 1));
+    const lane = (k - (n - 1) / 2) * gap;
+    const clen = Math.hypot(e.cx - c.cx, e.cy - c.cy) || 1, ox = (c.cy - e.cy) / clen * lane, oy = (e.cx - c.cx) / clen * lane;
     const len = Math.hypot(b.cx - a.cx, b.cy - a.cy) || 1, px = (a.cy - b.cy) / len, py = (b.cx - a.cx) / len;
-    const ox = back ? px * 8 : 0, oy = back ? py * 8 : 0;
+    const side = ox * px + oy * py < 0 ? -1 : 1;
     const [x1, y1] = edge(a, b.cx, b.cy, ox, oy), [x2, y2] = edge(b, a.cx, a.cy, ox, oy);
-    const out = back ? 14 : 0, mx = (x1 + x2) / 2 + px * out, my = (y1 + y2) / 2 + py * out;
-    const anchor = !back ? 'middle' : px > 0.3 ? 'start' : px < -0.3 ? 'end' : 'middle';
+    // A lone arrow's type and label sit on its middle. Two arrows put theirs 14px further out, each on its own side.
+    // Three or more have a middle lane with no outer side, so each label stays on its lane and the labels are
+    // staggered along the lanes, from 20% to 80% of the way from `lo`, so they do not stack.
+    const along = n < 3 ? 0.5 : 0.2 + 0.6 * k / (n - 1), t = lo === l.from ? along : 1 - along;
+    const out = n === 2 ? 14 * side : 0, mx = x1 + (x2 - x1) * t + px * out, my = y1 + (y2 - y1) * t + py * out;
+    const anchor = n !== 2 ? 'middle' : px * side > 0.3 ? 'start' : px * side < -0.3 ? 'end' : 'middle';
     const d = `M${x1},${y1}L${x2},${y2}`;
     const g = svg('g', { 'data-i': i, class: sel.has(l.from) && sel.has(l.to) ? 'sel' : '' });
     const inherits = l.type === 'extends' || l.type === 'implements';
@@ -568,9 +579,10 @@ function drawWires() {
       g.append(t);
     }
     if (l.type === 'has-a') {
-      if (l.fromLabel) g.append(label(l.fromLabel, x1, y1, x2, y2));
-      // Measured from the head, the arrow's outer side is on the left, so a shifted pair keeps both labels outside.
-      if (l.toLabel) g.append(label(l.toLabel, x2, y2, x1, y1, back ? -1 : 1));
+      // An arrow off the centre line keeps both multiplicities on its outer side; measured from the head, that side
+      // is the other one.
+      if (l.fromLabel) g.append(label(l.fromLabel, x1, y1, x2, y2, lane ? side : 1));
+      if (l.toLabel) g.append(label(l.toLabel, x2, y2, x1, y1, lane ? -side : 1));
     }
     wires.insertBefore(g, temp);
   });
@@ -994,9 +1006,10 @@ function endDrag(e) {
     temp.setAttribute('d', '');
     const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.box');
     const a = drag.from, b = target && byId(target.dataset.id);
-    // A second arrow from a to b would hide exactly under the first, so it is not added; b to a still is, unless an
+    // Arrows between the same boxes are drawn side by side, so HLD adds every one: each request path gets its own.
+    // In LLD and DSA a second arrow from a to b adds nothing, so it is not added; b to a still is, unless an
     // undirected line already joins them.
-    const dup = b && state.links.some(l => l.from === a.id && l.to === b.id || l.type === 'undirected' && l.from === b.id && l.to === a.id);
+    const dup = b && !M.arrowLabels && state.links.some(l => l.from === a.id && l.to === b.id || l.type === 'undirected' && l.from === b.id && l.to === a.id);
     if (b && b !== a && !dup) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind) });
     // A right-drag from a node to empty canvas drops a new node of the same kind there, joined to it and ready to type into.
     else if (!target && M.kinds[a.kind][2] === 'node') {
