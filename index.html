@@ -749,9 +749,11 @@ board.addEventListener('keydown', e => {
   } else if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     if (sec === 'methods') rows[i] = withParens(rows[i]);
-    rows.splice(i + 1, 0, '');
+    // With the caret at the start of a non-empty row, the new row goes above it; otherwise it goes below.
+    const at = inp.value && inp.selectionEnd === 0 ? i : i + 1;
+    rows.splice(at, 0, '');
     commit();
-    render(rowSel(c.id, sec, i + 1));
+    render(rowSel(c.id, sec, at));
   } else if (e.key === 'Backspace' && inp.value === '' && rows.length > 1) {
     e.preventDefault();
     rows.splice(i, 1);
