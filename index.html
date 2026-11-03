@@ -49,10 +49,17 @@
   #zoom button { display: grid; place-items: center; min-width: 30px; height: 28px; padding: 0 6px; border: 0; background: none; font: 13px system-ui, sans-serif; cursor: pointer; }
   #zoom button:hover { background: #eef4ff; }
   #zoom-reset { min-width: 52px !important; font-variant-numeric: tabular-nums; }
+  /* The HLD series key sits just above the zoom control, one series to a row. */
+  #legend { position: fixed; left: 12px; bottom: 52px; z-index: 10; display: flex; flex-direction: column; padding: 3px; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; }
+  #legend[hidden] { display: none; }
+  #legend button { display: flex; align-items: center; gap: 8px; padding: 3px 8px; border: 0; border-radius: 3px; background: none; font: bold 13px system-ui, sans-serif; cursor: pointer; }
+  #legend button:hover { background: #eef4ff; }
+  .swatch { width: 12px; height: 12px; border-radius: 50%; }
   #hint { position: absolute; inset: 0; display: grid; place-items: center; color: #999; font-size: 15px; pointer-events: none; }
   #hint[hidden] { display: none; }
   #wires { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
-  .line { stroke: #333; stroke-width: 1.5; fill: none; }
+  /* --c is an HLD arrow's series colour. */
+  .line { stroke: var(--c, #333); stroke-width: 1.5; fill: none; }
   .implements { stroke-dasharray: 6 4; }
   .hit { stroke: transparent; stroke-width: 14; fill: none; pointer-events: stroke; cursor: context-menu; }
   /* An arrow's labels answer the mouse as the arrow does. */
@@ -62,7 +69,8 @@
   /* The type name sits on the middle of its arrow; the halo in the board's colour breaks the line behind it. */
   .type { font: 12px system-ui, sans-serif; fill: #666; stroke: #fafafa; stroke-width: 4px; paint-order: stroke; }
   /* An HLD arrow's label is usually a step number, so it is larger and darker to read on a shared screen. */
-  .type.label { font: bold 15px system-ui, sans-serif; fill: #1e40af; }
+  .type.label { font: bold 15px system-ui, sans-serif; fill: var(--c); }
+  body[data-mode="hld"] #open path { stroke: context-stroke; }
   #temp { stroke: #2563eb; stroke-width: 1.5; stroke-dasharray: 4 3; }
   /* Pen ink sits above the boxes, but clicks pass through it to them. */
   #ink { position: absolute; left: 0; top: 0; z-index: 1; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
@@ -207,7 +215,8 @@
       <marker id="tri" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">
         <path d="M0,0 L12,6 L0,12 z" fill="#fff" stroke="#333" stroke-width="1.5"/>
       </marker>
-      <!-- The open head is drawn smaller than the triangle; its stroke is wider in marker units so it stays as thick. -->
+      <!-- The open head is drawn smaller than the triangle; its stroke is wider in marker units so it stays as thick.
+           In HLD it takes its line's colour, where the browser supports context-stroke. -->
       <marker id="open" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto">
         <path d="M0,0 L12,6 L0,12" fill="none" stroke="#333" stroke-width="2.1"/>
       </marker>
@@ -221,6 +230,7 @@
   <button id="zoom-reset" title="Reset to 100%">100%</button>
   <button id="zoom-in" title="Zoom in"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
 </div>
+<div id="legend" hidden></div>
 <div id="menu" hidden></div>
 <dialog id="dlg"></dialog>
 
@@ -330,7 +340,9 @@ function parseDiagram(text, m = mode) {
       s.links.every(l => l && ids.has(l.from) && ids.has(l.to) && l.from !== l.to && types.includes(l.type) &&
         [l.fromLabel, l.toLabel, l.label].every(t => t === undefined || typeof t === 'string')) &&
       (s.ink === undefined || Array.isArray(s.ink) &&
-        s.ink.every(k => Array.isArray(k) && k.length >= 4 && k.length % 2 === 0 && k.every(Number.isFinite)));
+        s.ink.every(k => Array.isArray(k) && k.length >= 4 && k.length % 2 === 0 && k.every(Number.isFinite))) &&
+      (s.colours === undefined || s.colours?.constructor === Object &&
+        Object.values(s.colours).every(c => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)));
     if (!ok) return null;
     s.ink ??= [];
     // Hand-written arrays often hold numbers, such as "cells": [3, 1, 4]; every row and cell is kept as text.
@@ -538,7 +550,45 @@ function label(text, x, y, ox, oy, side = 1) {
   return t;
 }
 
+// The step an HLD arrow's label starts with, read from its first word, as [series, place in it, next label]:
+// "3 insert if new" gives ['1', 3, '4'], "r2" gives ['R1', 2, 'r3'] and "B" gives ['A', 66, 'C']. A label such as
+// "wake app" gives nothing.
+function step(label) {
+  const w = (label || '').split(/[^A-Za-z0-9]/)[0], n = w.match(/^([A-Za-z]*)(\d+)/);
+  if (n) return [n[1].toUpperCase() + '1', +n[2], n[1] + (+n[2] + 1)];
+  if (/^[A-Za-z]$/.test(w)) return ['A', w.toUpperCase().charCodeAt(0), String.fromCharCode(w.charCodeAt(0) + 1)];
+}
+
+// Each series of HLD steps has its own colour, for its lines and labels: the one picked for it in the series key
+// (kept in `state.colours`), or by default numbers blue, letters green, and each prefix such as R or W one of the
+// rest. Arrows that are not steps are grey.
+const SERIES = [['Black', '#1e1e1e'], ['Red', '#e03131'], ['Green', '#2f9e44'], ['Blue', '#1971c2'], ['Orange', '#f08c00']];
+const colourOf = k => state.colours?.[k] ?? SERIES[k === '1' ? 3 : k === 'A' ? 2 : [0, 1, 4][[...k].reduce((h, c) => h + c.charCodeAt(0), 0) % 3]][1];
+const seriesColour = label => { const s = step(label); return s ? colourOf(s[0]) : '#888'; };
+
+// The series key in the bottom-left corner lists each series of steps with its first and last step, such as 1–12,
+// and a click on one picks its colour. It shows only in HLD, and only while some arrow is a step.
+function drawLegend() {
+  const ranges = {};
+  if (M.arrowLabels) for (const l of state.links) {
+    const s = step(l.label);
+    if (s) (ranges[s[0]] ??= []).push(s[1]);
+  }
+  const legend = $('legend');
+  legend.hidden = !Object.keys(ranges).length;
+  legend.replaceChildren(...Object.entries(ranges).map(([k, at]) => {
+    const name = p => k === 'A' ? String.fromCharCode(p) : k.slice(0, -1) + p;
+    const lo = Math.min(...at), hi = Math.max(...at), b = document.createElement('button');
+    b.innerHTML = `<span class="swatch" style="background:${colourOf(k)}"></span>`;
+    b.append(lo === hi ? name(lo) : `${name(lo)}–${name(hi)}`);
+    b.onclick = e => openMenu(e, SERIES.map(([cname, c]) => [cname, () => { (state.colours ??= {})[k] = c; },
+      colourOf(k) === c, `<span class="swatch" style="background:${c}"></span>`]));
+    return b;
+  }));
+}
+
 function drawWires() {
+  drawLegend();
   wires.querySelectorAll('g').forEach(g => g.remove());
   state.links.forEach((l, i) => {
     const a = rect(l.from), b = rect(l.to);
@@ -565,6 +615,7 @@ function drawWires() {
     const anchor = n !== 2 ? 'middle' : px * side > 0.3 ? 'start' : px * side < -0.3 ? 'end' : 'middle';
     const d = `M${x1},${y1}L${x2},${y2}`;
     const g = svg('g', { 'data-i': i, class: sel.has(l.from) && sel.has(l.to) ? 'sel' : '' });
+    if (M.arrowLabels) g.style.setProperty('--c', seriesColour(l.label));
     const inherits = l.type === 'extends' || l.type === 'implements';
     const head = l.type === 'undirected' ? 'none' : `url(#${inherits ? 'tri' : 'open'})`;
     g.append(svg('path', { d, class: `line ${l.type}`, 'marker-end': head }), svg('path', { d, class: 'hit' }));
@@ -998,6 +1049,15 @@ window.addEventListener('pointermove', e => {
   }
 });
 
+// A new HLD arrow continues the latest arrow whose label starts a step, or is 1.
+function nextLabel() {
+  for (let i = state.links.length - 1; i >= 0; i--) {
+    const s = step(state.links[i].label);
+    if (s) return s[2];
+  }
+  return '1';
+}
+
 function endDrag(e) {
   // Only right-button drags set `moved`. Windows turns a pen held still into a right-click, which a stroke must not open.
   if (drag.moved || drag.ink || drag.erase) skipMenu = true;
@@ -1010,7 +1070,7 @@ function endDrag(e) {
     // In LLD and DSA a second arrow from a to b adds nothing, so it is not added; b to a still is, unless an
     // undirected line already joins them.
     const dup = b && !M.arrowLabels && state.links.some(l => l.from === a.id && l.to === b.id || l.type === 'undirected' && l.from === b.id && l.to === a.id);
-    if (b && b !== a && !dup) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind) });
+    if (b && b !== a && !dup) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind), label: M.arrowLabels ? nextLabel() : undefined });
     // A right-drag from a node to empty canvas drops a new node of the same kind there, joined to it and ready to type into.
     else if (!target && M.kinds[a.kind][2] === 'node') {
       const p = pt(e);
