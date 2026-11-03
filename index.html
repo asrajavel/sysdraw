@@ -68,8 +68,8 @@
   .mult { font: 14px Consolas, monospace; }
   /* The type name sits on the middle of its arrow; the halo in the board's colour breaks the line behind it. */
   .type { font: 12px system-ui, sans-serif; fill: #666; stroke: #fafafa; stroke-width: 4px; paint-order: stroke; }
-  /* An HLD arrow's label is usually a step number, so it is larger and darker to read on a shared screen. */
-  .type.label { font: bold 15px system-ui, sans-serif; fill: var(--c); }
+  /* An HLD arrow's label is usually a step number, so it is larger and semi-bold to read on a shared screen. */
+  .type.label { font: 600 14px system-ui, sans-serif; fill: var(--c); }
   body[data-mode="hld"] #open path { stroke: context-stroke; }
   #temp { stroke: #2563eb; stroke-width: 1.5; stroke-dasharray: 4 3; }
   /* Pen ink sits above the boxes, but clicks pass through it to them. */
