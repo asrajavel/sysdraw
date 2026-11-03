@@ -511,23 +511,25 @@ function rect(id) {
   return { x, y, w, h, cx: x + w / 2, cy: y + h / 2, round: M.kinds[el.dataset.kind][2] === 'node' };
 }
 
-// The point where the line from the centre of `r` toward (tx, ty) leaves the box border, or a node's circle.
-function edge(r, tx, ty) {
+// The point where the line from the centre of `r` toward (tx, ty) leaves the box border, or a node's circle. With
+// (ox, oy), the line is moved sideways by that offset first; the offset must be at right angles to the line.
+function edge(r, tx, ty, ox = 0, oy = 0) {
   const dx = tx - r.cx, dy = ty - r.cy;
   if (r.round) {
-    const len = Math.hypot(dx, dy) || 1;
-    return [r.cx + dx / len * r.w / 2, r.cy + dy / len * r.h / 2];
+    const len = Math.hypot(dx, dy) || 1, t = Math.sqrt(Math.max(0, (r.w / 2) ** 2 - ox * ox - oy * oy));
+    return [r.cx + ox + dx / len * t, r.cy + oy + dy / len * t];
   }
-  const s = Math.min(Math.abs(r.w / 2 / dx), Math.abs(r.h / 2 / dy));
-  return isFinite(s) ? [r.cx + dx * s, r.cy + dy * s] : [r.cx, r.cy];
+  const s = Math.min((r.w / 2 - Math.sign(dx) * ox) / Math.abs(dx), (r.h / 2 - Math.sign(dy) * oy) / Math.abs(dy));
+  return isFinite(s) ? [r.cx + ox + dx * s, r.cy + oy + dy * s] : [r.cx + ox, r.cy + oy];
 }
 
-// A multiplicity label 30px along the line from (x, y) toward (ox, oy), placed 12px to one side of the line.
+// A multiplicity label 30px along the line from (x, y) toward (ox, oy), placed 12px to one side of the line:
+// the right side of that direction on screen, or the left when `side` is -1.
 // The text starts or ends at that point on the side away from the line, so a long label such as 0..* never
 // crosses a vertical arrow; on a near-horizontal arrow it is centred above or below the line.
-function label(text, x, y, ox, oy) {
+function label(text, x, y, ox, oy, side = 1) {
   const len = Math.hypot(ox - x, oy - y) || 1, ux = (ox - x) / len, uy = (oy - y) / len;
-  const px = -uy, py = ux; // unit vector perpendicular to the line
+  const px = -uy * side, py = ux * side; // unit vector perpendicular to the line
   const t = svg('text', {
     x: x + ux * 30 + px * 12, y: y + uy * 30 + py * 12 + 5, class: 'mult',
     'text-anchor': px > 0.3 ? 'start' : px < -0.3 ? 'end' : 'middle',
@@ -541,25 +543,34 @@ function drawWires() {
   state.links.forEach((l, i) => {
     const a = rect(l.from), b = rect(l.to);
     if (!a || !b) return;
-    const [x1, y1] = edge(a, b.cx, b.cy), [x2, y2] = edge(b, a.cx, a.cy);
+    // When another arrow runs the other way between the same two boxes, each is drawn 8px to its own right, so the
+    // pair separates, and its type and label sit 14px further out on that side. (px, py) is the unit vector to the
+    // arrow's right on screen.
+    const back = state.links.some(o => o.from === l.to && o.to === l.from);
+    const len = Math.hypot(b.cx - a.cx, b.cy - a.cy) || 1, px = (a.cy - b.cy) / len, py = (b.cx - a.cx) / len;
+    const ox = back ? px * 8 : 0, oy = back ? py * 8 : 0;
+    const [x1, y1] = edge(a, b.cx, b.cy, ox, oy), [x2, y2] = edge(b, a.cx, a.cy, ox, oy);
+    const out = back ? 14 : 0, mx = (x1 + x2) / 2 + px * out, my = (y1 + y2) / 2 + py * out;
+    const anchor = !back ? 'middle' : px > 0.3 ? 'start' : px < -0.3 ? 'end' : 'middle';
     const d = `M${x1},${y1}L${x2},${y2}`;
     const g = svg('g', { 'data-i': i, class: sel.has(l.from) && sel.has(l.to) ? 'sel' : '' });
     const inherits = l.type === 'extends' || l.type === 'implements';
     const head = l.type === 'undirected' ? 'none' : `url(#${inherits ? 'tri' : 'open'})`;
     g.append(svg('path', { d, class: `line ${l.type}`, 'marker-end': head }), svg('path', { d, class: 'hit' }));
     if (M.typeNames) {
-      const t = svg('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 + 4, class: 'type', 'text-anchor': 'middle' });
+      const t = svg('text', { x: mx, y: my + 4, class: 'type', 'text-anchor': anchor });
       t.textContent = l.type;
       g.append(t);
     }
     if (M.arrowLabels && l.label) {
-      const t = svg('text', { x: (x1 + x2) / 2, y: (y1 + y2) / 2 + 5, class: 'type label', 'text-anchor': 'middle' });
+      const t = svg('text', { x: mx, y: my + 5, class: 'type label', 'text-anchor': anchor });
       t.textContent = l.label;
       g.append(t);
     }
     if (l.type === 'has-a') {
       if (l.fromLabel) g.append(label(l.fromLabel, x1, y1, x2, y2));
-      if (l.toLabel) g.append(label(l.toLabel, x2, y2, x1, y1));
+      // Measured from the head, the arrow's outer side is on the left, so a shifted pair keeps both labels outside.
+      if (l.toLabel) g.append(label(l.toLabel, x2, y2, x1, y1, back ? -1 : 1));
     }
     wires.insertBefore(g, temp);
   });
