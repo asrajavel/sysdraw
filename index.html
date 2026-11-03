@@ -130,6 +130,7 @@
   body[data-mode="hld"] .box { min-width: 96px; box-sizing: border-box; padding: 10px 12px 8px; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 1px 4px #0001; }
   body[data-mode="hld"] .head { flex-direction: column; gap: 4px; padding: 0; }
   body[data-mode="hld"] .box .badge, body[data-mode="hld"] .box .badge svg { width: 56px; height: 56px; border-radius: 0; }
+  body[data-mode="hld"] .box .badge:empty { display: none; }
   body[data-mode="hld"] .box .name { flex: none; padding: 0 2px; font: 600 13px system-ui, sans-serif; }
   body[data-mode="hld"] .sec { border: 0; padding: 0; }
   body[data-mode="hld"] .item { padding: 0; }
@@ -279,6 +280,9 @@ const MODES = {
       queue: [pic('#ffedd5', '#f97316', '<path d="M4 18h44l12 14-12 14H4z"/><rect x="10" y="25" width="15" height="14" rx="1.5" fill="#fff"/><rect x="30" y="25" width="15" height="14" rx="1.5" fill="#fff"/><path d="M10 26l7.5 6.5L25 26M30 26l7.5 6.5L45 26" fill="none"/>'), 'Queue'],
       storage: [pic('#ccfbf1', '#14b8a6', '<path d="M11 20Q32 -4 53 20" fill="none"/><path d="M9 22l8 30a15 4 0 0 0 30 0l8-30"/><ellipse cx="32" cy="22" rx="23" ry="6"/>'), 'Object Storage'],
       cdn: [pic('#fce7f3', '#ec4899', '<circle cx="32" cy="32" r="24"/><path d="M32 8a10 24 0 0 0 0 48 10 24 0 0 0 0-48M8 32h48M12 20h40M12 44h40" fill="none"/><circle cx="16" cy="18" r="4" fill="#fff"/><circle cx="50" cy="24" r="4" fill="#fff"/><circle cx="26" cy="52" r="4" fill="#fff"/>'), 'CDN'],
+      ai: [pic('#fef3c7', '#f59e0b', '<path d="M22 6v8M32 6v8M42 6v8M22 50v8M32 50v8M42 50v8M6 22h8M6 32h8M6 42h8M50 22h8M50 32h8M50 42h8" fill="none"/><rect x="14" y="14" width="36" height="36" rx="4"/><text x="32" y="38" text-anchor="middle" fill="var(--c)" stroke="none" style="font: bold 16px system-ui, sans-serif">AI</text>'), 'AI'],
+      // No icon, for anything the other kinds don't cover, such as an MCP server, skills or a codebase.
+      component: ['', 'Component'],
     },
     types: ['sync'], arrowLabels: true,
     sections: NOTES,
