@@ -567,7 +567,7 @@ const colourOf = k => state.colours?.[k] ?? SERIES[k === '1' ? 3 : k === 'A' ? 2
 const seriesColour = label => { const s = step(label); return s ? colourOf(s[0]) : '#888'; };
 
 // The series key in the bottom-left corner lists each series of steps with its first and last step, such as 1–12,
-// and a click on one picks its colour. It shows only in HLD, and only while some arrow is a step.
+// and a left or right click on one picks its colour. It shows only in HLD, and only while some arrow is a step.
 function drawLegend() {
   const ranges = {};
   if (M.arrowLabels) for (const l of state.links) {
@@ -581,7 +581,7 @@ function drawLegend() {
     const lo = Math.min(...at), hi = Math.max(...at), b = document.createElement('button');
     b.innerHTML = `<span class="swatch" style="background:${colourOf(k)}"></span>`;
     b.append(lo === hi ? name(lo) : `${name(lo)}–${name(hi)}`);
-    b.onclick = e => openMenu(e, SERIES.map(([cname, c]) => [cname, () => { (state.colours ??= {})[k] = c; },
+    b.onclick = b.oncontextmenu = e => openMenu(e, SERIES.map(([cname, c]) => [cname, () => { (state.colours ??= {})[k] = c; },
       colourOf(k) === c, `<span class="swatch" style="background:${c}"></span>`]));
     return b;
   }));
