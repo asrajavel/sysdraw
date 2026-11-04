@@ -1093,11 +1093,10 @@ function endDrag(e) {
     const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.box');
     const a = drag.from, b = target && byId(target.dataset.id);
     // Arrows between the same boxes are drawn side by side, so HLD adds every one: each request path gets its own.
-    // In LLD and DSA a second arrow of the same type with the same ends adds nothing, so it is not added. A different
-    // type (a Decorator both has-a and implements its Component) or the reverse direction still is, unless an
-    // undirected line already joins the boxes.
+    // In LLD and DSA a second arrow with the same ends adds nothing, so it is not added; the reverse direction still
+    // is, unless an undirected line already joins the boxes.
     const type = b && M.link(a.kind, b.kind), [from, to] = M.flips?.includes(type) ? [b, a] : [a, b];
-    const dup = b && !M.arrowLabels && state.links.some(l => l.from === from.id && l.to === to.id && l.type === type || l.type === 'undirected' && l.from === to.id && l.to === from.id);
+    const dup = b && !M.arrowLabels && state.links.some(l => l.from === from.id && l.to === to.id || l.type === 'undirected' && l.from === to.id && l.to === from.id);
     if (b && b !== a && !dup) state.links.push({ from: from.id, to: to.id, type, label: M.arrowLabels ? nextLabel(a.id) : undefined });
     // A right-drag from a node to empty canvas drops a new node of the same kind there, joined to it and ready to type into.
     else if (!target && M.kinds[a.kind][2] === 'node') {
