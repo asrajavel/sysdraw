@@ -108,6 +108,8 @@
   .badge svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
   .badge svg.pic { fill: var(--f); stroke: var(--c); stroke-width: 2.4; }
   .sec { padding: 3px 0; border-top: 1.5px solid #333; }
+  /* A record shows no methods and an interface no fields. Their rows stay in the diagram, so changing the kind back shows them again. */
+  .box[data-kind="record"] .sec:has([data-sec="methods"]), .box[data-kind="interface"] .sec:has([data-sec="fields"]) { display: none; }
   .box :is(input, textarea) { display: block; box-sizing: border-box; min-width: 100%; field-sizing: content; border: 0; outline: 0; background: transparent; padding: 2px 10px; font: 14px Consolas, monospace; cursor: text; }
   /* A textarea breaks lines only where the text does, so a box grows with its longest line as it does with an input. */
   .box textarea { resize: none; overflow: hidden; white-space: pre; }
@@ -254,7 +256,7 @@ const NOTES = [['notes', '', 'note']];
 // Each mode has its own box kinds ([badge, name, shape, size]), arrow types, row sections ([key, tag letter,
 // placeholder]) and storage key. A kind with a `shape` is drawn differently from a normal box: 'frame' is a resizable
 // empty border, 'text' is plain lines of text, 'window' is a heading bar over lines of text, 'node' is one value in a
-// circle, and 'cells' is an array of cells that starts `size` [columns, rows] big. `link(a, b)` picks the arrow type for a right-drag from a box of kind `a` to one of kind `b`, and the
+// circle, and 'cells' is an array of cells that starts `size` [columns, rows] big. `link(a, b)` picks the arrow type for a right-drag from a box of kind `a` to one of kind `b`, an arrow whose type is in `flips` points back at `a`, and the
 // arrow's right-click menu can change it. `typeNames` writes each arrow's type on it, and `arrowLabels` lets that menu
 // write a short `label` on it.
 const MODES = {
@@ -265,11 +267,10 @@ const MODES = {
     sections: [['fields', 'f', 'field'], ['methods', 'm', 'method()']],
     // The "New" prefix keeps an unrenamed box from clashing with Java's own Class, Enum and Record.
     newName: name => 'New' + name.replace(/ /g, ''),
-    link(a, b) {
-      if (b === 'interface') return a === 'interface' ? 'extends' : 'implements';
-      const isClass = k => k === 'class' || k === 'abstract';
-      return isClass(a) && isClass(b) ? 'extends' : 'has-a';
-    },
+    // The drag starts at the parent, so the start box alone picks the type, and `flips` turns inheritance arrows
+    // round to point from the child to the parent.
+    link: a => ({ interface: 'implements', abstract: 'extends' })[a] ?? 'has-a',
+    flips: ['extends', 'implements'],
   },
   hld: {
     key: 'hld-tool', hint: 'Right-click to add a component',
@@ -747,7 +748,7 @@ board.addEventListener('keydown', e => {
     return;
   }
   if (shape === 'cells') return cellKey(e, c);
-  const all = [...box.querySelectorAll('input, textarea')], k = all.indexOf(inp);
+  const all = [...box.querySelectorAll('input, textarea')].filter(el => el.checkVisibility()), k = all.indexOf(inp);
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     // Inside a multi-line row, the arrows move between its lines and leave the row only from its first or last line.
     if ((e.key === 'ArrowDown' ? inp.value.slice(inp.selectionEnd) : inp.value.slice(0, inp.selectionStart)).includes('\n')) return;
@@ -1092,10 +1093,12 @@ function endDrag(e) {
     const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.box');
     const a = drag.from, b = target && byId(target.dataset.id);
     // Arrows between the same boxes are drawn side by side, so HLD adds every one: each request path gets its own.
-    // In LLD and DSA a second arrow from a to b adds nothing, so it is not added; b to a still is, unless an
-    // undirected line already joins them.
-    const dup = b && !M.arrowLabels && state.links.some(l => l.from === a.id && l.to === b.id || l.type === 'undirected' && l.from === b.id && l.to === a.id);
-    if (b && b !== a && !dup) state.links.push({ from: a.id, to: b.id, type: M.link(a.kind, b.kind), label: M.arrowLabels ? nextLabel(a.id) : undefined });
+    // In LLD and DSA a second arrow of the same type with the same ends adds nothing, so it is not added. A different
+    // type (a Decorator both has-a and implements its Component) or the reverse direction still is, unless an
+    // undirected line already joins the boxes.
+    const type = b && M.link(a.kind, b.kind), [from, to] = M.flips?.includes(type) ? [b, a] : [a, b];
+    const dup = b && !M.arrowLabels && state.links.some(l => l.from === from.id && l.to === to.id && l.type === type || l.type === 'undirected' && l.from === to.id && l.to === from.id);
+    if (b && b !== a && !dup) state.links.push({ from: from.id, to: to.id, type, label: M.arrowLabels ? nextLabel(a.id) : undefined });
     // A right-drag from a node to empty canvas drops a new node of the same kind there, joined to it and ready to type into.
     else if (!target && M.kinds[a.kind][2] === 'node') {
       const p = pt(e);
