@@ -16,15 +16,17 @@
   #mode { display: flex; flex: none; margin-right: 6px; border: 1.5px solid #333; border-radius: 4px; overflow: hidden; }
   #mode button { border: 0; border-radius: 0; box-shadow: none; transform: none; padding: 4px 10px; font-weight: 600; }
   #mode button.on { background: #333; color: #fff; }
-  /* Export, Import and Clear sit at the right end of the bar, away from the mode switch. */
+  /* Export and Import sit at the right end of the bar, away from the mode switch. */
   #export { margin-left: auto; }
+  /* The diagram list's button shows the open diagram's name, cut short with … when it is long. */
+  #dname { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
   /* Toolbar buttons share the class boxes' border, corners and shadow. */
   header button, dialog button { font: 14px system-ui, sans-serif; padding: 4px 12px; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; cursor: pointer; white-space: nowrap; }
   header button:hover, dialog button:hover { background: #eef4ff; }
   header button:active, dialog button:active { box-shadow: none; transform: translateY(1px); }
   /* Toolbar icons are Lucide icons (lucide.dev, ISC licence), pasted inline so the page needs no download. */
   header button { display: inline-flex; align-items: center; gap: 6px; }
-  header svg, #zoom svg, #menu .ico > svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  header svg, #zoom svg, #menu .ico > svg, #menu :is(.dadd, .drow) svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   dialog button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
   dialog button.primary:hover { background: #1d4ed8; }
 
@@ -204,14 +206,27 @@
   #menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid #eee; }
   #menu .title { padding: 4px 8px 2px; font-size: 12px; color: #888; }
   #menu input { margin: 2px; padding: 4px 6px; font: inherit; border: 1px solid #ddd; border-radius: 5px; outline-color: #2563eb; }
+  /* The diagram list, shown in #menu: a row to name and add a diagram, then a row for each saved diagram, scrolling
+     once the rows fill 60% of the window. A row's rename and delete buttons stay faint until the row is hovered. */
+  #menu :is(.dadd, .drow) { display: flex; align-items: center; gap: 8px; }
+  #menu :is(.dadd, .dlist) { width: 380px; }
+  #menu .dlist { max-height: 60vh; overflow-y: auto; }
+  #menu .drow { padding: 1px 2px 1px 8px; border-radius: 5px; cursor: pointer; }
+  #menu .drow:hover, #menu .drow.on { background: #eef4ff; }
+  #menu .drow.on .dname { font-weight: 600; }
+  #menu :is(.dadd, .drow) input, #menu .dname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #menu :is(.dadd, .drow) button { flex: none; padding: 5px; }
+  #menu .drow button { opacity: .3; }
+  #menu .drow:hover button { opacity: 1; }
+  #menu .drow button:hover { background: #d6e4fd; }
 </style>
 </head>
 <body>
 <header>
   <div id="mode"><button data-mode="dsa">DSA</button><button data-mode="lld">LLD</button><button data-mode="hld">HLD</button></div>
+  <button id="diagrams"><span id="dname"></span><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
   <button id="export"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Export</button>
   <button id="import"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>Import</button>
-  <button id="clear"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Clear</button>
   <input id="file" type="file" accept=".json" hidden>
 </header>
 <div id="board"><div id="hint"></div><div id="world">
@@ -254,7 +269,7 @@ const EXTRAS = {
 };
 const NOTES = [['notes', '', 'note']];
 // Each mode has its own box kinds ([badge, name, shape, size]), arrow types, row sections ([key, tag letter,
-// placeholder]) and storage key. A kind with a `shape` is drawn differently from a normal box: 'frame' is a resizable
+// placeholder]) and `key`, the storage key under which the mode kept its one diagram before the diagram list. A kind with a `shape` is drawn differently from a normal box: 'frame' is a resizable
 // empty border, 'text' is plain lines of text, 'window' is a heading bar over lines of text, 'node' is one value in a
 // circle, and 'cells' is an array of cells that starts `size` [columns, rows] big. `link(a, b)` picks the arrow type for a right-drag from a box of kind `a` to one of kind `b`, an arrow whose type is in `flips` points back at `a`, and the
 // arrow's right-click menu can change it. `typeNames` writes each arrow's type on it, and `arrowLabels` lets that menu
@@ -317,21 +332,50 @@ const MULTS = [['None'], ['One-to-One', '1', '1'], ['One-to-Many', '1', '*'], ['
 const $ = id => document.getElementById(id);
 const board = $('board'), world = $('world'), wires = $('wires'), temp = $('temp'), ink = $('ink'), menu = $('menu'), dlg = $('dlg');
 
-// `mode` is 'lld' or 'hld', and `M` is its entry in MODES. `state` is the mode's whole diagram. `last` is its JSON
-// as of the latest commit; `undo` holds earlier commits. `view` holds the pan offset and zoom: the diagram origin
-// sits `x`, `y` screen pixels from the board's top-left corner, and `z` is the zoom (1 is 100%). setMode() at the end
-// of the script fills these in.
-let mode, M, state, last, undo, view, drag = null;
+// `mode` is 'dsa', 'lld' or 'hld', and `M` is its entry in MODES. `cur` is the open diagram's list entry (see
+// entries()), and `state` is that whole diagram. `last` is its JSON as of the latest commit; `undo` holds earlier
+// commits. `view` holds the pan offset and zoom: the diagram origin sits `x`, `y` screen pixels from the board's
+// top-left corner, and `z` is the zoom (1 is 100%). setMode() at the end of the script fills these in.
+let mode, M, cur, state, last, undo, view, drag = null;
 
 // `ink` holds the pen strokes, each a flat list of diagram points [x1, y1, x2, y2, ...] with at least two points.
 function blank() { return { classes: [], links: [], ink: [] }; }
-// `memory` keeps each mode's latest diagram JSON too, so switching modes loses nothing when storage is blocked.
+const filled = s => s.classes.length > 0 || s.ink.length > 0;
+
+// Storage can be blocked (private windows, some previews); `memory` then holds every key until the tab closes.
 const memory = {};
-function load() {
-  let text = memory[mode];
-  try { text = localStorage.getItem(M.key) ?? text; } catch {}
-  return parseDiagram(text) || blank();
+let full = false; // set once the "storage is full" warning has been shown
+function get(k) { try { return localStorage.getItem(k); } catch { return memory[k] ?? null; } }
+function del(k) { delete memory[k]; try { localStorage.removeItem(k); } catch {} }
+function put(k, v) {
+  try { localStorage.setItem(k, v); } catch (e) {
+    memory[k] = v;
+    if (e.name === 'QuotaExceededError' && !full) {
+      full = true;
+      // After the current event, so an Import dialog that is closing cannot close the warning with it.
+      setTimeout(() => ask('Browser storage is full', '<p>Your latest changes are not saved. Export this diagram, then delete old diagrams to make room.</p>', [['OK', null, true]]));
+    }
+  }
 }
+function storedKeys() { try { return Object.keys(localStorage); } catch { return Object.keys(memory); } }
+
+// Each saved diagram has three storage keys: its JSON under its id, { name, mode, at } under id + '-meta' (`at` is
+// the time of its latest edit in ms), and its pan and zoom under id + '-view'. There is no shared index, so a second
+// tab never drops diagrams the first one added. Returns every saved diagram's list entry, { id, name, mode, at },
+// newest edit first.
+function entries() {
+  return storedKeys().filter(k => k.endsWith('-meta')).map(k => {
+    try {
+      const d = JSON.parse(get(k));
+      if (Object.hasOwn(MODES, d.mode) && typeof d.name === 'string') return { id: k.slice(0, -5), name: d.name, mode: d.mode, at: +d.at || 0 };
+    } catch {}
+  }).filter(Boolean).sort((a, b) => b.at - a.at);
+}
+const putMeta = d => put(d.id + '-meta', JSON.stringify({ name: d.name, mode: d.mode, at: d.at }));
+const saved = d => get(d.id + '-meta') !== null;
+// A new diagram's entry. It is saved once the diagram has a box or stroke, or straight away when the list's + made it.
+const fresh = (m, name) => ({ id: 'd-' + newId(), name: name || 'Untitled', mode: m, at: Date.now() });
+const load = () => parseDiagram(get(cur.id)) || blank();
 
 // Returns the diagram in the JSON `text` for mode `m`, or null when it is not one this page can draw. Imports may be
 // hand-written or AI-written, so every box and arrow is checked. Empty sections get one blank row to type into.
@@ -362,10 +406,15 @@ function parseDiagram(text, m = mode) {
     return s;
   } catch { return null; }
 }
-// Storage can be blocked (private windows, some previews); the diagram then lives only until the tab closes.
+// Saves the open diagram when it has changed, which also moves it to the top of the list. A new diagram that is
+// still empty stays out of the list, so visiting a mode with no diagrams leaves nothing behind.
 function persist() {
-  memory[mode] = JSON.stringify(state);
-  try { localStorage.setItem(M.key, memory[mode]); } catch {}
+  const s = JSON.stringify(state);
+  if (s === get(cur.id) || !saved(cur) && !filled(state)) return;
+  if (!saved(cur)) put(cur.id + '-view', JSON.stringify(view)); // pan() saves the view only once the diagram is saved
+  put(cur.id, s);
+  cur.at = Date.now();
+  putMeta(cur);
 }
 function commit() {
   const s = JSON.stringify(state);
@@ -390,7 +439,7 @@ function pan(dx, dy) {
   board.style.backgroundPosition = `${view.x}px ${view.y}px`;
   board.style.backgroundSize = `${20 * view.z}px ${20 * view.z}px`;
   $('zoom-reset').textContent = Math.round(view.z * 100) + '%';
-  try { localStorage.setItem(M.key + '-view', JSON.stringify(view)); } catch {}
+  if (saved(cur)) put(cur.id + '-view', JSON.stringify(view));
 }
 
 // Sets the zoom to `z`, kept between 20% and 300%. The diagram point at board position (cx, cy) stays where it is,
@@ -402,18 +451,23 @@ function zoom(z, cx = board.clientWidth / 2, cy = board.clientHeight / 2) {
   pan((cx - view.x) * (1 - k), (cy - view.y) * (1 - k));
 }
 
-// Switch to mode `m` and show the diagram and pan offset that mode saved last. Undo history does not carry over.
-function setMode(m) {
+// Switch to mode `m` and open diagram `d` with its saved pan and zoom. Without `d`, open the diagram last open in that
+// mode, or else its newest diagram, or else a new one. Undo history does not carry over.
+function setMode(m, d) {
   mode = m;
   M = MODES[m];
   document.body.dataset.mode = m;
-  try { localStorage.setItem('diagram-mode', m); } catch {}
+  put('diagram-mode', m);
+  const mine = entries().filter(e => e.mode === m);
+  cur = d ?? mine.find(e => e.id === get('open-' + m)) ?? mine[0] ?? fresh(m);
+  put('open-' + m, cur.id);
+  showName();
   state = load();
   last = JSON.stringify(state);
   undo = [];
   drag = null;
   view = { x: 0, y: 0, z: 1 };
-  try { view = { ...view, ...JSON.parse(localStorage.getItem(M.key + '-view')) }; } catch {}
+  try { view = { ...view, ...JSON.parse(get(cur.id + '-view')) }; } catch {}
   document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   $('hint').textContent = M.hint;
   menu.hidden = true;
@@ -962,10 +1016,10 @@ board.addEventListener('pointerdown', e => {
 
 // Dragging with the middle button or turning the wheel pans the canvas, as in Excalidraw. Shift+wheel pans sideways.
 // Ctrl+wheel, Cmd+wheel and a trackpad pinch zoom the canvas about the cursor instead of zooming the page. The
-// listener is on the window so the header and zoom control cannot let a page zoom through; an open dialog keeps its
-// own scrolling.
+// listener is on the window so the header and zoom control cannot let a page zoom through; an open dialog and the
+// menu (the diagram list can be long) keep their own scrolling.
 window.addEventListener('wheel', e => {
-  if (dlg.open) return;
+  if (dlg.open || menu.contains(e.target)) return;
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) {
     const r = board.getBoundingClientRect();
@@ -1261,6 +1315,87 @@ $('mode').onclick = e => {
   if (m && m !== mode) setMode(m);
 };
 
+// ---- Diagram list ----
+const PLUS = '<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>';
+const PENCIL = '<svg viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>';
+function showName() {
+  $('dname').textContent = cur.name;
+  $('diagrams').title = cur.name;
+}
+// The list opens under its button and holds only the current mode's diagrams, as the mode buttons work like tabs. Its
+// first row names and adds a diagram; below it, the saved diagrams, newest edit first. Clicking a row opens that
+// diagram. The text boxes keep their keys to themselves, so Ctrl+Z, Delete and Escape there never reach the diagram.
+$('diagrams').onclick = openList;
+function openList() {
+  const add = document.createElement('div');
+  add.className = 'dadd';
+  add.innerHTML = `<input placeholder="New diagram name"><button title="New diagram">${PLUS}</button>`;
+  const [inp, plus] = add.children;
+  plus.onclick = () => {
+    const d = fresh(mode, inp.value.trim());
+    putMeta(d);
+    setMode(mode, d);
+  };
+  inp.onkeydown = e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') plus.click();
+    if (e.key === 'Escape') menu.hidden = true;
+  };
+  const rows = document.createElement('div');
+  rows.className = 'dlist';
+  rows.append(...entries().filter(d => d.mode === mode).map(listRow));
+  const r = $('diagrams').getBoundingClientRect();
+  openMenu({ preventDefault() {}, clientX: r.left, clientY: r.bottom + 4 }, [add, ...(rows.children.length ? [null, rows] : [])]);
+  inp.focus();
+}
+// One diagram's row: its name, then rename and delete buttons. Rename turns the name into a text box: Enter or clicking away keeps the new name, Escape keeps
+// the old one.
+function listRow(d) {
+  const row = document.createElement('div');
+  row.className = 'drow' + (d.id === cur.id ? ' on' : '');
+  row.innerHTML = `<span class="dname"></span><button title="Rename">${PENCIL}</button><button title="Delete">${TRASH}</button>`;
+  const [name, rename, bin] = row.children;
+  name.textContent = d.name;
+  row.onclick = () => { if (d.id === cur.id) menu.hidden = true; else setMode(mode, d); };
+  rename.onclick = e => {
+    e.stopPropagation();
+    const inp = Object.assign(document.createElement('input'), { value: d.name });
+    let done = false;
+    const finish = keep => {
+      if (done) return;
+      done = true;
+      if (keep && inp.value.trim()) {
+        d.name = name.textContent = inp.value.trim();
+        putMeta(d);
+        if (d.id === cur.id) { cur.name = d.name; showName(); }
+      }
+      inp.replaceWith(name);
+    };
+    inp.onclick = e => e.stopPropagation();
+    inp.onblur = () => finish(true);
+    inp.onkeydown = e => {
+      e.stopPropagation();
+      if (e.key === 'Enter' || e.key === 'Escape') finish(e.key === 'Enter');
+    };
+    name.replaceWith(inp);
+    inp.focus();
+    inp.select();
+  };
+  // A click in the dialog closes the list, so either answer opens it again.
+  bin.onclick = e => {
+    e.stopPropagation();
+    ask(`Delete “${d.name}”?`, '<p>This deletes the diagram for good. Ctrl+Z cannot bring it back.</p>', [
+      ['Cancel', openList],
+      ['Delete', () => {
+        for (const k of ['', '-meta', '-view']) del(d.id + k);
+        if (d.id === cur.id) setMode(mode);
+        openList();
+      }, true],
+    ]);
+  };
+  return row;
+}
+
 // ---- Dialogs: the page never uses the browser's alert, confirm or prompt ----
 // `html` is the dialog body. Each button is [label, onClick, isPrimary]; onClick receives the button and
 // returns false to keep the dialog open. Enter in a one-line text box clicks the primary button.
@@ -1282,7 +1417,7 @@ dlg.addEventListener('keydown', e => {
 
 // Export shows the diagram's JSON so it can be copied, or downloaded as a file to keep in the repo.
 $('export').onclick = () => {
-  ask('Export', '<label>File name <input id="fname" value="diagram"></label><textarea id="json" readonly></textarea>', [
+  ask('Export', '<label>File name <input id="fname"></label><textarea id="json" readonly></textarea>', [
     ['Close'],
     ['Copy', b => {
       navigator.clipboard.writeText($('json').value).then(() => { b.textContent = 'Copied'; }, () => $('json').select());
@@ -1295,13 +1430,14 @@ $('export').onclick = () => {
       a.click();
     }, true],
   ]);
+  $('fname').value = cur.name;
   // A diagram without ink leaves `ink` out, so it exports exactly as before pens were supported.
   $('json').value = JSON.stringify({ mode, ...state, ink: state.ink.length ? state.ink : undefined }, null, 2);
 };
 
-// Import replaces the diagram with pasted JSON or a chosen file. Ctrl+Z restores the previous diagram.
+// Import adds pasted JSON or a chosen file to the list as a new diagram, named "Imported" or after the file.
 $('import').onclick = () => ask('Import',
-  '<p>Paste a diagram\'s JSON, or choose a file saved with Export. This replaces the current diagram.</p>' +
+  '<p>Paste a diagram\'s JSON, or choose a file saved with Export. It opens as a new diagram.</p>' +
   '<textarea id="json"></textarea><p class="err" id="err"></p>', [
     ['Cancel'],
     ['Choose File…', () => { $('file').click(); return false; }],
@@ -1312,11 +1448,12 @@ $('file').onchange = async () => {
   $('file').value = '';
   if (!f) return;
   $('json').value = await f.text();
-  if (loadDiagram($('json').value) !== false) dlg.close();
+  if (loadDiagram($('json').value, f.name.replace(/\.json$/i, '')) !== false) dlg.close();
 };
 
-// Replace the diagram with the JSON in `text`, switching to the mode it was exported from. Returns false, and shows why in the dialog, when it is not a diagram.
-function loadDiagram(text) {
+// Open the JSON in `text` as a new diagram called `name`, in the mode it was exported from. Returns false, and shows
+// why in the dialog, when it is not a diagram.
+function loadDiagram(text, name = 'Imported') {
   let m;
   try { m = JSON.parse(text).mode; } catch {}
   // Without a mode (older exports, hand-written JSON), use whichever mode's own kinds the diagram uses. One with only
@@ -1327,20 +1464,21 @@ function loadDiagram(text) {
     $('err').textContent = 'This is not a diagram saved by this tool.';
     return false;
   }
-  if (m !== mode) setMode(m);
+  setMode(m, fresh(m, name));
   state = s;
-  commit();
+  last = JSON.stringify(s); // so Ctrl+Z cannot empty the imported diagram
+  persist();
   render();
 }
 
-$('clear').onclick = () => ask('Clear the diagram?', '<p>This deletes every box, arrow and pen stroke.</p>', [
-  ['Cancel'],
-  ['Clear', () => { state = blank(); commit(); render(); }, true],
-]);
-
-let saved;
-try { saved = localStorage.getItem('diagram-mode'); } catch {}
-setMode(Object.hasOwn(MODES, saved) ? saved : 'lld');
+// Before the diagram list, each mode kept one diagram under its MODES `key`. One with a box or stroke in it joins the
+// list as "Untitled", keeping that key as its id, so its JSON and pan and zoom stay where they are.
+for (const [k, m] of Object.entries(MODES)) {
+  const s = parseDiagram(get(m.key), k);
+  if (s && filled(s) && !saved({ id: m.key })) putMeta({ id: m.key, name: 'Untitled', mode: k, at: Date.now() });
+}
+const lastMode = get('diagram-mode');
+setMode(Object.hasOwn(MODES, lastMode) ? lastMode : 'lld');
 </script>
 </body>
 </html>

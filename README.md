@@ -25,6 +25,7 @@ It is one HTML file with no dependencies and no server. Your diagrams are saved 
 | Scribble | Draw with a pen; hold either button on its side to rub out strokes, or right-click the canvas and choose Clear ink |
 | Zoom | Ctrl+scroll (Cmd+scroll on a Mac), a two-finger pinch, or the − and + in the bottom-left corner; click the percentage for 100% |
 | Undo | Ctrl+Z |
-| Save or share a diagram | Export copies or downloads it as JSON; Import loads one |
+| Keep several diagrams | Every edit saves at once. The diagram's name in the toolbar opens the list of the current mode's diagrams: type a name and press Enter to start a new one, click one to open it, or use its pencil or bin to rename or delete it |
+| Save or share a diagram | Export copies or downloads it as JSON; Import opens one as a new diagram |
 
 To run it locally, download `index.html` and open it in a browser.
