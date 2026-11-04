@@ -1,6 +1,7 @@
 # sysdraw
 
 - `index.html` stays one dependency-free file that opens straight from disk, with no server or build step.
+- Keep the code simple. Handle the cases that come up often in a design round, and leave rare ones (such as two arrows of different types between the same boxes) to a manual fix with right-click.
 - Cloudflare Pages serves this repo's `main` branch at https://sysdraw.pages.dev, so every push to `main` goes live.
 - The LLD, HLD, and DSA modes share all canvas, menu, undo, and import/export code. Each mode's box kinds, arrow types, row sections, and storage key live in its `MODES` entry; prefer adding a mode feature there over branching on `mode`. The shared code still names LLD's `has-a`, `extends`, `implements`, `fields`, `methods`, and `enum` directly, and HLD styling is under `body[data-mode="hld"]`.
 - HLD component icons are hand-drawn SVGs in a soft-line style: a mid-strength coloured line on the palest fill of the same colour. The user found the filled versions too loud and the grey-toned ones too muted.
