@@ -6,7 +6,7 @@ A small diagram editor for system design interviews and screen-sharing. Open it 
 - **LLD mode** draws UML class diagrams: classes, interfaces, enums and records with fields and methods, joined by extends, implements and has-a arrows.
 - **DSA mode** is a scratch pad for coding rounds: 1D and 2D arrays with index numbers, and nodes for linked lists, trees and graphs. Right-drag from a node to empty canvas grows a new node joined to it; right-drag an array right or down to add columns or rows, and back to remove them. Tab moves through the cells and adds one past the end.
 
-It is one HTML file with no dependencies and no server. Your diagrams are saved in your own browser and never leave it.
+It is one HTML file with no dependencies and no server. Your browser keeps one diagram per mode, and it never leaves your computer. In Chrome or Edge, **Open folder** keeps any number of diagrams as `.json` files in a folder you pick instead, so you can keep them in git; changes made to those files by other programs show up within a second. In Brave, first enable `brave://flags/#file-system-access-api`.
 
 ## Controls
 
@@ -25,7 +25,7 @@ It is one HTML file with no dependencies and no server. Your diagrams are saved 
 | Scribble | Draw with a pen; hold either button on its side to rub out strokes, or right-click the canvas and choose Clear ink |
 | Zoom | Ctrl+scroll (Cmd+scroll on a Mac), a two-finger pinch, or the − and + in the bottom-left corner; click the percentage for 100% |
 | Undo | Ctrl+Z |
-| Keep several diagrams | Every edit saves at once. The diagram's name in the toolbar opens the list of the current mode's diagrams: type a name and press Enter to start a new one, click one to open it, or use its pencil or bin to rename or delete it |
+| Keep several diagrams | Every edit saves at once. Open a folder, then the diagram's name in the toolbar opens the list of the current mode's diagrams: type a name and press Enter to start a new one, click one to open it, or use its pencil or bin to rename or delete it |
 | Save or share a diagram | Export copies or downloads it as JSON; Import opens one as a new diagram |
 
 To run it locally, download `index.html` and open it in a browser.

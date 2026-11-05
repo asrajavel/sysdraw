@@ -16,8 +16,10 @@
   #mode { display: flex; flex: none; margin-right: 6px; border: 1.5px solid #333; border-radius: 4px; overflow: hidden; }
   #mode button { border: 0; border-radius: 0; box-shadow: none; transform: none; padding: 4px 10px; font-weight: 600; }
   #mode button.on { background: #333; color: #fff; }
-  /* Export and Import sit at the right end of the bar, away from the mode switch. */
-  #export { margin-left: auto; }
+  /* The folder, Export and Import buttons sit at the right end of the bar, away from the mode switch. The folder button
+     is hidden in browsers that cannot open a folder. */
+  #folder, #folder[hidden] + #export { margin-left: auto; }
+  header button[hidden] { display: none; }
   /* The diagram list's button shows the open diagram's name, cut short with … when it is long. */
   #dname { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
   /* Toolbar buttons share the class boxes' border, corners and shadow. */
@@ -225,6 +227,7 @@
 <header>
   <div id="mode"><button data-mode="dsa">DSA</button><button data-mode="lld">LLD</button><button data-mode="hld">HLD</button></div>
   <button id="diagrams"><span id="dname"></span><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+  <button id="folder" title="Diagram folder"><svg viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span id="fldname"></span></button>
   <button id="export"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>Export</button>
   <button id="import"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>Import</button>
   <input id="file" type="file" accept=".json" hidden>
@@ -332,8 +335,8 @@ const MULTS = [['None'], ['One-to-One', '1', '1'], ['One-to-Many', '1', '*'], ['
 const $ = id => document.getElementById(id);
 const board = $('board'), world = $('world'), wires = $('wires'), temp = $('temp'), ink = $('ink'), menu = $('menu'), dlg = $('dlg');
 
-// `mode` is 'dsa', 'lld' or 'hld', and `M` is its entry in MODES. `cur` is the open diagram's list entry (see
-// entries()), and `state` is that whole diagram. `last` is its JSON as of the latest commit; `undo` holds earlier
+// `mode` is 'dsa', 'lld' or 'hld', and `M` is its entry in MODES. `cur` is the open diagram's entry, { id, name, mode,
+// at } (see entries()), and `state` is that whole diagram. `last` is its JSON as of the latest commit; `undo` holds earlier
 // commits. `view` holds the pan offset and zoom: the diagram origin sits `x`, `y` screen pixels from the board's
 // top-left corner, and `z` is the zoom (1 is 100%). setMode() at the end of the script fills these in.
 let mode, M, cur, state, last, undo, view, drag = null;
@@ -353,29 +356,39 @@ function put(k, v) {
     if (e.name === 'QuotaExceededError' && !full) {
       full = true;
       // After the current event, so an Import dialog that is closing cannot close the warning with it.
-      setTimeout(() => ask('Browser storage is full', '<p>Your latest changes are not saved. Export this diagram, then delete old diagrams to make room.</p>', [['OK', null, true]]));
+      setTimeout(() => ask('Browser storage is full', '<p>Your latest changes are not saved. Export the diagram to keep it.</p>', [['OK', null, true]]));
     }
   }
 }
-function storedKeys() { try { return Object.keys(localStorage); } catch { return Object.keys(memory); } }
 
-// Each saved diagram has three storage keys: its JSON under its id, { name, mode, at } under id + '-meta' (`at` is
-// the time of its latest edit in ms), and its pan and zoom under id + '-view'. There is no shared index, so a second
-// tab never drops diagrams the first one added. Returns every saved diagram's list entry, { id, name, mode, at },
-// newest edit first.
+// Without a folder open, the browser keeps one diagram per mode: its JSON under the mode's MODES `key` and its pan and
+// zoom under that key + '-view'. With a folder open, entries() lists the folder's diagrams, { id, name, mode, at },
+// newest edit first; `at` is the file's last-modified time in ms.
 function entries() {
-  return storedKeys().filter(k => k.endsWith('-meta')).map(k => {
-    try {
-      const d = JSON.parse(get(k));
-      if (Object.hasOwn(MODES, d.mode) && typeof d.name === 'string') return { id: k.slice(0, -5), name: d.name, mode: d.mode, at: +d.at || 0 };
-    } catch {}
-  }).filter(Boolean).sort((a, b) => b.at - a.at);
+  return [...files].filter(([, f]) => f.mode).map(([p, f]) =>
+    ({ id: p, name: p.split('/').pop().slice(0, -5), mode: f.mode, at: f.at })).sort((a, b) => b.at - a.at);
 }
-const putMeta = d => put(d.id + '-meta', JSON.stringify({ name: d.name, mode: d.mode, at: d.at }));
-const saved = d => get(d.id + '-meta') !== null;
-// A new diagram's entry. It is saved once the diagram has a box or stroke, or straight away when the list's + made it.
-const fresh = (m, name) => ({ id: 'd-' + newId(), name: name || 'Untitled', mode: m, at: Date.now() });
-const load = () => parseDiagram(get(cur.id)) || blank();
+const saved = d => !dir || files.has(d.id);
+// A new diagram's entry in the folder. Its id is a free path under the mode's subfolder, such as "hld/Untitled 2.json".
+// It is saved once the diagram has a box or stroke, or straight away when the list's + made it.
+function fresh(m, name) {
+  name = (name || 'Untitled').replace(/[\\/:*?"<>|]/g, '-');
+  let n = name;
+  for (let i = 2; taken(`${m}/${n}.json`); i++) n = `${name} ${i}`;
+  return { id: `${m}/${n}.json`, name: n, mode: m, at: Date.now() };
+}
+const load = () => parseDiagram(dir ? files.get(cur.id)?.text : get(cur.id)) || blank();
+// A diagram file's text: Export's format, with `ink` left out when empty.
+const fileText = (s, m = mode) => JSON.stringify({ mode: m, ...s, ink: s.ink.length ? s.ink : undefined }, null, 2);
+// The mode the diagram JSON in `text` belongs to, or undefined when it is not a diagram. Without a "mode" (older
+// exports, hand-written JSON), it is whichever mode's own kinds the diagram uses. One with only Box, Text and Text
+// with Heading fits every mode, so it takes `fallback`.
+function modeOf(text, fallback) {
+  let m;
+  try { m = JSON.parse(text).mode; } catch { return; }
+  m ??= Object.keys(MODES).find(k => parseDiagram(text, k)?.classes.some(c => !Object.hasOwn(EXTRAS, c.kind))) ?? fallback;
+  return Object.hasOwn(MODES, m) && parseDiagram(text, m) ? m : undefined;
+}
 
 // Returns the diagram in the JSON `text` for mode `m`, or null when it is not one this page can draw. Imports may be
 // hand-written or AI-written, so every box and arrow is checked. Empty sections get one blank row to type into.
@@ -406,15 +419,14 @@ function parseDiagram(text, m = mode) {
     return s;
   } catch { return null; }
 }
-// Saves the open diagram when it has changed, which also moves it to the top of the list. A new diagram that is
-// still empty stays out of the list, so visiting a mode with no diagrams leaves nothing behind.
+// Saves the open diagram when it has changed. In a folder, a new diagram that is still empty gets no file, so visiting
+// a mode with no diagrams leaves nothing behind.
 function persist() {
-  const s = JSON.stringify(state);
-  if (s === get(cur.id) || !saved(cur) && !filled(state)) return;
+  const s = dir ? fileText(state) : JSON.stringify(state);
+  if (s === (dir ? files.get(cur.id)?.text : get(cur.id)) || !saved(cur) && !filled(state)) return;
   if (!saved(cur)) put(cur.id + '-view', JSON.stringify(view)); // pan() saves the view only once the diagram is saved
-  put(cur.id, s);
   cur.at = Date.now();
-  putMeta(cur);
+  dir ? write(cur.id, s) : put(cur.id, s);
 }
 function commit() {
   const s = JSON.stringify(state);
@@ -451,16 +463,18 @@ function zoom(z, cx = board.clientWidth / 2, cy = board.clientHeight / 2) {
   pan((cx - view.x) * (1 - k), (cy - view.y) * (1 - k));
 }
 
-// Switch to mode `m` and open diagram `d` with its saved pan and zoom. Without `d`, open the diagram last open in that
-// mode, or else its newest diagram, or else a new one. Undo history does not carry over.
+// Switch to mode `m` and open diagram `d` with its saved pan and zoom. Without `d`, open the mode's browser diagram
+// when no folder is open; in a folder, the diagram last open in that mode, or else its newest, or else a new one. Undo
+// history does not carry over.
 function setMode(m, d) {
   mode = m;
   M = MODES[m];
   document.body.dataset.mode = m;
   put('diagram-mode', m);
   const mine = entries().filter(e => e.mode === m);
-  cur = d ?? mine.find(e => e.id === get('open-' + m)) ?? mine[0] ?? fresh(m);
-  put('open-' + m, cur.id);
+  cur = d ?? (!dir ? { id: M.key, name: '', mode: m, at: 0 }
+    : mine.find(e => e.id === get('open-' + m)) ?? mine[0] ?? fresh(m));
+  if (dir) put('open-' + m, cur.id);
   showName();
   state = load();
   last = JSON.stringify(state);
@@ -1333,7 +1347,7 @@ function openList() {
   const [inp, plus] = add.children;
   plus.onclick = () => {
     const d = fresh(mode, inp.value.trim());
-    putMeta(d);
+    write(d.id, fileText(blank()));
     setMode(mode, d);
   };
   inp.onkeydown = e => {
@@ -1365,10 +1379,18 @@ function listRow(d) {
     const finish = keep => {
       if (done) return;
       done = true;
-      if (keep && inp.value.trim()) {
-        d.name = name.textContent = inp.value.trim();
-        putMeta(d);
-        if (d.id === cur.id) { cur.name = d.name; showName(); }
+      const nm = inp.value.trim().replace(/[\\/:*?"<>|]/g, '-'), id = d.id.replace(/[^/]*$/, nm + '.json');
+      // A file is renamed in its own subfolder by writing it under the new name, then removing the old one. A name
+      // another file in that subfolder already has, in any letter case, is ignored.
+      if (keep && nm && !taken(id)) {
+        write(id, files.get(d.id).text, d.mode);
+        remove(d.id);
+        const v = get(d.id + '-view');
+        if (v) put(id + '-view', v);
+        del(d.id + '-view');
+        if (cur.id === d.id) { cur.id = id; cur.name = nm; put('open-' + mode, id); showName(); }
+        d.id = id;
+        d.name = name.textContent = nm;
       }
       inp.replaceWith(name);
     };
@@ -1388,7 +1410,8 @@ function listRow(d) {
     ask(`Delete “${d.name}”?`, '<p>This deletes the diagram for good. Ctrl+Z cannot bring it back.</p>', [
       ['Cancel', openList],
       ['Delete', () => {
-        for (const k of ['', '-meta', '-view']) del(d.id + k);
+        remove(d.id);
+        del(d.id + '-view');
         if (d.id === cur.id) setMode(mode);
         openList();
       }, true],
@@ -1433,12 +1456,12 @@ $('export').onclick = () => {
   ]);
   $('fname').value = cur.name;
   // A diagram without ink leaves `ink` out, so it exports exactly as before pens were supported.
-  $('json').value = JSON.stringify({ mode, ...state, ink: state.ink.length ? state.ink : undefined }, null, 2);
+  $('json').value = fileText(state);
 };
 
-// Import adds pasted JSON or a chosen file to the list as a new diagram, named "Imported" or after the file.
+// Import opens pasted JSON or a chosen file through loadDiagram(), named "Imported" or after the file.
 $('import').onclick = () => ask('Import',
-  '<p>Paste a diagram\'s JSON, or choose a file saved with Export. It opens as a new diagram.</p>' +
+  '<p>Paste a diagram\'s JSON, or choose a file saved with Export. It opens as a new diagram, or without a folder in place of this mode\'s diagram.</p>' +
   '<textarea id="json"></textarea><p class="err" id="err"></p>', [
     ['Cancel'],
     ['Choose File…', () => { $('file').click(); return false; }],
@@ -1452,32 +1475,147 @@ $('file').onchange = async () => {
   if (loadDiagram($('json').value, f.name.replace(/\.json$/i, '')) !== false) dlg.close();
 };
 
-// Open the JSON in `text` as a new diagram called `name`, in the mode it was exported from. Returns false, and shows
-// why in the dialog, when it is not a diagram.
+// Open the JSON in `text` in the mode it was exported from: in a folder as a new diagram called `name`, otherwise in
+// place of that mode's browser diagram, which Ctrl+Z brings back. Returns false, and shows why in the dialog, when it
+// is not a diagram.
 function loadDiagram(text, name = 'Imported') {
-  let m;
-  try { m = JSON.parse(text).mode; } catch {}
-  // Without a mode (older exports, hand-written JSON), use whichever mode's own kinds the diagram uses. One with only
-  // Box, Text and Text with Heading fits every mode, so it stays in the current one.
-  m ??= Object.keys(MODES).find(k => parseDiagram(text, k)?.classes.some(c => !Object.hasOwn(EXTRAS, c.kind))) ?? mode;
-  const s = Object.hasOwn(MODES, m) && parseDiagram(text, m);
+  const m = modeOf(text, mode), s = m && parseDiagram(text, m);
   if (!s) {
     $('err').textContent = 'This is not a diagram saved by this tool.';
     return false;
   }
-  setMode(m, fresh(m, name));
+  setMode(m, dir ? fresh(m, name) : undefined);
+  if (!dir) undo.push(last);
   state = s;
-  last = JSON.stringify(s); // so Ctrl+Z cannot empty the imported diagram
+  last = JSON.stringify(s); // in a folder, Ctrl+Z cannot empty the imported diagram
   persist();
   render();
 }
 
-// Before the diagram list, each mode kept one diagram under its MODES `key`. One with a box or stroke in it joins the
-// list as "Untitled", keeping that key as its id, so its JSON and pan and zoom stay where they are.
-for (const [k, m] of Object.entries(MODES)) {
-  const s = parseDiagram(get(m.key), k);
-  if (s && filled(s) && !saved({ id: m.key })) putMeta({ id: m.key, name: 'Untitled', mode: k, at: Date.now() });
+// ---- Diagram folder (Chrome and Edge) ----
+// With a folder open, every diagram is a .json file in it or its subfolders, in Export's format, so the files can be
+// kept in git and edited by other tools. The browser then keeps only each diagram's pan and zoom. `dir` is the folder's
+// handle, or null when diagrams live in browser storage. `files` maps each file's path in the folder, such as
+// "hld/Ad clicks.json", to { text, at, mode }: its contents, its last-modified time in ms, and its mode, which is
+// undefined when the file is not a diagram. A diagram's id is its path.
+let dir = null, files = new Map();
+// Disk writes run one at a time in `queue`. `pending` counts those not finished and `changes` counts every write or
+// delete ever queued; the folder is not re-read while a write is pending, and a read that a write or delete started
+// during is dropped, so a read cannot bring back a file's text from before a change.
+let queue = Promise.resolve(), pending = 0, changes = 0;
+// Windows and macOS treat "Foo.json" and "foo.json" as the same file, so a path is taken in any letter case.
+const taken = p => [...files.keys()].some(k => k.toLowerCase() === p.toLowerCase());
+function enqueue(job) {
+  const d = dir;
+  pending++;
+  changes++;
+  queue = queue.then(() => job(d)).catch(e => ask('Could not save to the folder',
+    `<p>Your latest change may not be on disk (${e.name}). Export the diagram to keep a copy.</p>`, [['OK', null, true]]))
+    .finally(() => pending--);
 }
+// The folder holding `path` and the file's name in it, creating missing subfolders when `make` is set.
+async function parentOf(d, path, make) {
+  const parts = path.split('/');
+  for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: make });
+  return [d, parts.at(-1)];
+}
+function write(path, text, m = mode) {
+  files.set(path, { text, at: Date.now(), mode: m });
+  enqueue(async d => {
+    const [p, name] = await parentOf(d, path, true);
+    const w = await (await p.getFileHandle(name, { create: true })).createWritable();
+    await w.write(text);
+    await w.close();
+  });
+}
+function remove(path) {
+  files.delete(path);
+  enqueue(async d => { const [p, name] = await parentOf(d, path); await p.removeEntry(name); });
+}
+// Reads every .json file in folder `d`, skipping hidden folders such as .git. A file whose last-modified time is
+// unchanged keeps its entry in `files` instead of being read again.
+async function scan(d = dir, base = '', out = new Map()) {
+  for await (const [name, h] of d.entries()) {
+    const path = base + name;
+    if (h.kind === 'directory') { if (!name.startsWith('.')) await scan(h, path + '/', out); continue; }
+    if (!name.endsWith('.json')) continue;
+    const f = await h.getFile(), old = files.get(path);
+    if (old?.at === f.lastModified) { out.set(path, old); continue; }
+    const text = await f.text();
+    out.set(path, { text, at: f.lastModified, mode: modeOf(text, path.split('/')[0]) });
+  }
+  return out;
+}
+async function link(h) {
+  files = await scan(h);
+  dir = h;
+  idb(h);
+  showFolder();
+  setMode(mode);
+}
+function showFolder() {
+  $('fldname').textContent = dir ? dir.name : 'Open folder';
+  $('diagrams').hidden = !dir; // without a folder, each mode has just its one browser diagram
+}
+// Every second, re-read the folder. When another program changed the open diagram's file, open the new version;
+// this waits while the user is typing in a box or menu, dragging, or has a dialog open, so their edit is not lost. A
+// read is dropped when the folder was closed or changed meanwhile.
+let reading = false;
+setInterval(async () => {
+  if (!dir || pending || reading) return;
+  reading = true;
+  try {
+    const d = dir, n = changes, next = await scan(d), was = files.get(cur.id)?.text, now = next.get(cur.id);
+    const busy = drag || dlg.open || !menu.hidden || document.activeElement?.closest('.box');
+    if (dir !== d || changes !== n || pending || busy && now && now.text !== was) return;
+    files = next;
+    if (now && now.text !== was && now.mode === mode) setMode(mode, cur);
+  } catch {} finally { reading = false; }
+}, 1000);
+// IndexedDB keeps the folder's handle across visits (localStorage cannot hold one). idb() reads it, idb(h) saves h,
+// and idb(null) forgets it. Every call resolves, with undefined when storage is blocked.
+function idb(h) {
+  return new Promise(done => {
+    try {
+      const r = indexedDB.open('sysdraw', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => {
+        const s = r.result.transaction('kv', 'readwrite').objectStore('kv');
+        const q = h === undefined ? s.get('dir') : h === null ? s.delete('dir') : s.put(h, 'dir');
+        q.onsuccess = () => done(q.result);
+        q.onerror = () => done();
+      };
+      r.onerror = () => done();
+    } catch { done(); }
+  });
+}
+async function pick() {
+  try { await link(await showDirectoryPicker({ id: 'sysdraw', mode: 'readwrite' })); } catch (e) {
+    if (e.name !== 'AbortError') ask('Could not open the folder', `<p>${e.name}</p>`, [['OK', null, true]]);
+  }
+}
+$('folder').hidden = !window.showDirectoryPicker;
+showFolder();
+$('folder').onclick = () => {
+  if (!dir) return pick();
+  ask('Diagram folder', '<p>Diagrams are saved as files in the folder <b id="fn"></b>.</p>', [
+    ['Cancel'],
+    ['Close folder', () => { dir = null; files = new Map(); idb(null); showFolder(); setMode(mode); }],
+    ['Change folder', pick, true],
+  ]);
+  $('fn').textContent = dir.name;
+};
+// Chrome asks again for access to a folder after a restart, which needs a click, so startup offers one.
+idb().then(async h => {
+  if (!h?.queryPermission) return;
+  if (await h.queryPermission({ mode: 'readwrite' }) === 'granted') return link(h);
+  ask('Open your diagram folder?', '<p>sysdraw saves diagrams in the folder <b id="fn"></b>.</p>', [
+    ['Not now'],
+    ['Open', () => { h.requestPermission({ mode: 'readwrite' }).then(p => p === 'granted' && link(h)); }, true],
+  ]);
+  $('fn').textContent = h.name;
+});
+
 const lastMode = get('diagram-mode');
 setMode(Object.hasOwn(MODES, lastMode) ? lastMode : 'lld');
 </script>
