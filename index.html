@@ -208,6 +208,9 @@
   #menu hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid #eee; }
   #menu .title { padding: 4px 8px 2px; font-size: 12px; color: #888; }
   #menu input { margin: 2px; padding: 4px 6px; font: inherit; border: 1px solid #ddd; border-radius: 5px; outline-color: #2563eb; }
+  #menu .steps { display: flex; align-items: center; }
+  #menu .steps input { flex: 1; min-width: 0; width: 120px; }
+  #menu .steps button { flex: none; justify-content: center; min-width: 26px; padding: 5px 4px; font-weight: 600; }
   /* The diagram list, shown in #menu: a row to name and add a diagram, then a row for each saved diagram, scrolling
      once the rows fill 60% of the window. A row's rename and delete buttons stay faint until the row is hovered. */
   #menu :is(.dadd, .drow) { display: flex; align-items: center; gap: 8px; }
@@ -656,6 +659,25 @@ function nextLabel(from) {
   const steps = state.links.map(l => [l, step(l.label)]).filter(([, s]) => s);
   const into = steps.findLast(([l]) => l.to === from) ?? steps.at(-1);
   return into ? steps.filter(([, s]) => s[0] === into[1][0]).reduce((a, b) => b[1][1] > a[1][1] ? b : a)[1][2] : '1';
+}
+
+// A step label moved by d places, keeping its prefix, its letter case and any text after it: "3 send" + 1 is "4 send",
+// "r2" + 1 is "r3" and "b" + 1 is "c". Gives null when the label is not a step or would go below 1 or past Z.
+function shift(label, d) {
+  const s = step(label);
+  if (!s) return null;
+  if (s[0] === 'A') return s[1] + d < 65 || s[1] + d > 90 ? null : String.fromCharCode(label.charCodeAt(0) + d) + label.slice(1);
+  return s[1] + d < 1 ? null : label.replace(/\d+/, s[1] + d);
+}
+
+// Moves arrow l's step by d. With `all`, every arrow in its series at the same step or later moves too, so ++ opens a
+// gap for a new step and −− closes the gap a deleted step left. Nothing moves when any label would go out of range.
+function shiftSteps(l, d, all) {
+  const s = step(l.label);
+  if (!s) return;
+  const ls = all ? state.links.filter(x => { const t = step(x.label); return t && t[0] === s[0] && t[1] >= s[1]; }) : [l];
+  const out = ls.map(x => shift(x.label, d));
+  if (!out.includes(null)) ls.forEach((x, i) => { x.label = out[i]; });
 }
 
 // Each series of HLD steps has its own colour, for its lines and labels: the one picked for it in the series key
@@ -1231,18 +1253,32 @@ const badge = k => `<span class="badge ${k}">${M.kinds[k][0]}</span>`;
 const TRASH = '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
 
 // The text box at the top of an arrow's or a series' menu. Each keystroke calls `set` with the text. Enter or leaving
-// the box commits it, and Escape puts back the text from when the menu opened.
+// the box commits it, and Escape puts back the text from when the menu opened or a step button last changed it.
 function menuInput(old, placeholder, set) {
-  const inp = Object.assign(document.createElement('input'), { value: old ?? '', placeholder });
+  const inp = Object.assign(document.createElement('input'), { defaultValue: old ?? '', placeholder });
   inp.oninput = () => set(inp.value.trim());
   inp.onblur = commit;
   inp.onkeydown = e => {
-    if (e.key === 'Escape') set(old);
+    if (e.key === 'Escape') set(inp.defaultValue);
     if (e.key === 'Enter' || e.key === 'Escape') { inp.blur(); menu.hidden = true; }
   };
   return inp;
 }
 const labelInput = l => menuInput(l.label, 'Label, e.g. 1 or A', t => { l.label = t || undefined; persist(); drawWires(); });
+
+// An arrow's label box between −− − and + ++. + and − move this arrow's step; ++ and −− move it and every later step
+// in its series. The menu stays open so a step can move several places, and Ctrl+Z undoes one click at a time. The
+// buttons never take focus, so keys still go to the label box rather than the diagram.
+function stepRow(l) {
+  const inp = labelInput(l), row = document.createElement('div');
+  const btn = (text, d, all, title) => Object.assign(document.createElement('button'), { textContent: text, title,
+    onmousedown: e => e.preventDefault(),
+    onclick: () => { shiftSteps(l, d, all); inp.defaultValue = inp.value = l.label ?? ''; commit(); drawWires(); } });
+  row.className = 'steps';
+  row.append(btn('−−', -1, true, 'This and later steps − 1'), btn('−', -1, false, 'This step − 1'), inp,
+    btn('+', 1, false, 'This step + 1'), btn('++', 1, true, 'This and later steps + 1'));
+  return [row, inp];
+}
 
 // Each item is [label, onClick, isSelected, iconHtml]; null draws a divider, a string draws a small heading, and an
 // element is shown as it is.
@@ -1286,9 +1322,9 @@ board.addEventListener('contextmenu', e => {
       }, false, TRASH],
     ]);
   } else if (g) {
-    const i = +g.dataset.i, l = state.links[i], inp = M.arrowLabels && labelInput(l);
+    const i = +g.dataset.i, l = state.links[i], [row, inp] = M.arrowLabels ? stepRow(l) : [];
     openMenu(e, [
-      ...(inp ? [inp, null] : []),
+      ...(row ? [row, null] : []),
       ...(M.types.length > 1 ? [...M.types.map(t => [t[0].toUpperCase() + t.slice(1), () => { l.type = t; }, l.type === t]), null] : []),
       ...(l.type === 'has-a' ? [...MULTS.map(([name, from, to]) =>
         [name, () => { l.fromLabel = from; l.toLabel = to; }, l.fromLabel === from && l.toLabel === to]), null] : []),
