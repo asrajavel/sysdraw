@@ -48,7 +48,7 @@
   /* touch-action: none hands pen and finger drags to the page instead of letting the browser scroll or zoom. */
   #board { position: fixed; inset: 48px 0 0 0; overflow: hidden; touch-action: none; background: #fff radial-gradient(#e6e6e6 1px, transparent 1px) 0 0 / 20px 20px; }
   #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-  /* Zoom control in the bottom-left corner: minus, the zoom percentage (a click resets it to 100%), and plus. */
+  /* Zoom control in the bottom-left corner: minus, the zoom percentage (a click resets it to 100%), plus, and fit. */
   #zoom { position: fixed; left: 12px; bottom: 12px; z-index: 10; display: flex; background: #fff; border: 1.5px solid #333; border-radius: 4px; box-shadow: 0 2px 6px #0002; overflow: hidden; }
   #zoom button { display: grid; place-items: center; min-width: 30px; height: 28px; padding: 0 6px; border: 0; background: none; font: 13px system-ui, sans-serif; cursor: pointer; }
   #zoom button:hover { background: #eef4ff; }
@@ -252,6 +252,7 @@
   <button id="zoom-out" title="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
   <button id="zoom-reset" title="Reset to 100%">100%</button>
   <button id="zoom-in" title="Zoom in"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+  <button id="zoom-fit" title="Fit the diagram to the screen"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
 </div>
 <div id="legend" hidden></div>
 <div id="menu" hidden></div>
@@ -461,6 +462,19 @@ function zoom(z, cx = board.clientWidth / 2, cy = board.clientHeight / 2) {
   const k = z / view.z;
   view.z = z;
   pan((cx - view.x) * (1 - k), (cy - view.y) * (1 - k));
+}
+
+// Zooms and pans so every box and pen stroke fits on the board with a 40px margin, centred. Arrows run between boxes,
+// so the margin covers labels that stick out. The zoom stays within zoom()'s 20% to 300%; an empty diagram is left as is.
+function fit() {
+  const r = [...world.querySelectorAll('.box')].map(b => [b.offsetLeft, b.offsetTop, b.offsetLeft + b.offsetWidth, b.offsetTop + b.offsetHeight])
+    .concat(state.ink.map(bounds));
+  if (!r.length) return;
+  const l = Math.min(...r.map(b => b[0])), t = Math.min(...r.map(b => b[1]));
+  const w = Math.max(...r.map(b => b[2])) - l, h = Math.max(...r.map(b => b[3])) - t;
+  const W = board.clientWidth, H = board.clientHeight;
+  view.z = Math.min(3, Math.max(0.2, Math.min((W - 80) / w, (H - 80) / h)));
+  pan((W - w * view.z) / 2 - l * view.z - view.x, (H - h * view.z) / 2 - t * view.z - view.y);
 }
 
 // Switch to mode `m` and open diagram `d` with its saved pan and zoom. Without `d`, open the mode's browser diagram
@@ -1324,6 +1338,7 @@ document.addEventListener('keydown', e => {
 $('zoom-in').onclick = () => zoom(Math.round(view.z * 10) / 10 + 0.1);
 $('zoom-out').onclick = () => zoom(Math.round(view.z * 10) / 10 - 0.1);
 $('zoom-reset').onclick = () => zoom(1);
+$('zoom-fit').onclick = fit;
 $('mode').onclick = e => {
   const m = e.target.dataset.mode;
   if (m && m !== mode) setMode(m);
