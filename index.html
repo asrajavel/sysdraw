@@ -1343,7 +1343,8 @@ function openList() {
   };
   const rows = document.createElement('div');
   rows.className = 'dlist';
-  rows.append(...entries().filter(d => d.mode === mode).map(listRow));
+  rows.append(...entries().filter(d => d.mode === mode)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })).map(listRow));
   const r = $('diagrams').getBoundingClientRect();
   openMenu({ preventDefault() {}, clientX: r.left, clientY: r.bottom + 4 }, [add, ...(rows.children.length ? [null, rows] : [])]);
   inp.focus();
