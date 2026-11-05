@@ -437,6 +437,9 @@ function commit() {
   if (s !== last) { undo.push(last); last = s; }
   persist();
 }
+// Without a folder, another tab of the page that saves this diagram fires `storage` here. Opening its version keeps
+// this tab from saving its own older copy over it on the next click.
+window.addEventListener('storage', e => { if (!dir && e.key === cur.id) setMode(mode); });
 const byId = id => state.classes.find(c => c.id === id);
 const boxOf = id => board.querySelector(`.box[data-id="${id}"]`);
 const rowSel = (id, sec, i) => `.box[data-id="${id}"] [data-sec="${sec}"][data-i="${i}"]`;
