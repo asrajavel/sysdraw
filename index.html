@@ -1595,7 +1595,9 @@ async function scan(d = dir, base = '', out = new Map()) {
     if (!name.endsWith('.json')) continue;
     const f = await h.getFile(), old = files.get(path);
     if (old?.at === f.lastModified) { out.set(path, old); continue; }
-    const text = await f.text();
+    // Git with core.autocrlf checks files out with CRLF; without this, persist() sees a difference and rewrites the
+    // file with LF on any click, so git shows it as modified with no real change.
+    const text = (await f.text()).replace(/\r\n/g, '\n');
     out.set(path, { text, at: f.lastModified, mode: modeOf(text, path.split('/')[0]) });
   }
   return out;
