@@ -655,13 +655,18 @@ function step(label) {
   if (/^[A-Za-z]$/.test(w)) return ['A', w.toUpperCase().charCodeAt(0), String.fromCharCode(w.charCodeAt(0) + 1)];
 }
 
-// A new HLD arrow from box `from` continues the series of the newest step arrow into `from`, after that series'
-// highest step, so it neither jumps to whichever series was drawn last nor repeats a label. With no step arrow into
-// `from`, it continues the series of the newest step arrow anywhere, or is 1.
+// A new HLD arrow from box `from` continues the series of the newest step arrow into `from`, so it neither jumps to
+// whichever series was drawn last nor repeats a label. It takes the lowest step missing from that series, so after
+// ++ on step 2 turns 1–8 into 1, 3–9, the new arrow is 2; with no gap, it is one after the series' highest step.
+// With no step arrow into `from`, it continues the series of the newest step arrow anywhere, or is 1.
 function nextLabel(from) {
   const steps = state.links.map(l => [l, step(l.label)]).filter(([, s]) => s);
   const into = steps.findLast(([l]) => l.to === from) ?? steps.at(-1);
-  return into ? steps.filter(([, s]) => s[0] === into[1][0]).reduce((a, b) => b[1][1] > a[1][1] ? b : a)[1][2] : '1';
+  if (!into) return '1';
+  const [series, at, next] = into[1], taken = new Set(steps.filter(([, s]) => s[0] === series).map(([, s]) => s[1]));
+  let k = series === 'A' ? 65 : 1;
+  while (taken.has(k)) k++;
+  return shift(next, k - at - 1) ?? next;
 }
 
 // A step label moved by d places, keeping its prefix, its letter case and any text after it: "3 send" + 1 is "4 send",
