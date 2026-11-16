@@ -1,6 +1,6 @@
 # sysdraw
 
-A small diagram editor for system design interviews and screen-sharing. Open it at **https://sysdraw.pages.dev**.
+A small diagram editor for system design interviews and screen-sharing. Open it at **https://sysdraw.pages.dev** or **https://asrajavel.github.io/sysdraw/**.
 
 - **HLD mode** draws system components (client, service, database, cache, load balancer, queue, object storage, CDN, AI, and a plain component with no icon) joined by arrows, plus boxes and text for grouping and notes.
 - **LLD mode** draws UML class diagrams: classes, interfaces, enums and records with fields and methods, joined by extends, implements and has-a arrows.
